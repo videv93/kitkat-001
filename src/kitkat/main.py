@@ -13,17 +13,20 @@ from kitkat.api.webhook import router as webhook_router
 from kitkat.config import get_settings
 from kitkat.database import Base, async_session, get_engine
 from kitkat.services import SignalDeduplicator
+from kitkat.services.rate_limiter import RateLimiter
 
 logger = structlog.get_logger()
 
 # Global deduplicator singleton - initialized in lifespan
 deduplicator: SignalDeduplicator | None = None
+# Global rate limiter singleton - initialized in lifespan
+rate_limiter: RateLimiter | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup/shutdown."""
-    global deduplicator
+    global deduplicator, rate_limiter
 
     # Startup
     settings = get_settings()
@@ -47,10 +50,16 @@ async def lifespan(app: FastAPI):
     app.state.deduplicator = deduplicator
     logger.info("Signal deduplicator initialized", ttl_seconds=60)
 
+    # Initialize rate limiter (Story 1.6)
+    rate_limiter = RateLimiter(window_seconds=60, max_requests=10)
+    app.state.rate_limiter = rate_limiter
+    logger.info("Rate limiter initialized", window_seconds=60, max_requests=10)
+
     yield
 
     # Shutdown
     deduplicator = None
+    rate_limiter = None
     await engine.dispose()
     logger.info("Database engine disposed")
 

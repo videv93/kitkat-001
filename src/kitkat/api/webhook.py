@@ -6,12 +6,14 @@ from typing import Literal
 
 import structlog
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kitkat.api.deps import get_db_session, verify_webhook_token
 from kitkat.models import Signal, SignalPayload
 from kitkat.services import SignalDeduplicator
+from kitkat.services.rate_limiter import RateLimiter
 
 logger = structlog.get_logger()
 
@@ -31,7 +33,7 @@ class ErrorResponse(BaseModel):
     """Standard error response format."""
 
     error: str
-    code: Literal["INVALID_TOKEN", "INVALID_SIGNAL"]
+    code: Literal["INVALID_TOKEN", "INVALID_SIGNAL", "RATE_LIMITED"]
     signal_id: None = None
     dex: None = None
     timestamp: str
@@ -62,12 +64,13 @@ async def webhook_handler(
     payload: SignalPayload,
     token: str = Depends(verify_webhook_token),
     db: AsyncSession = Depends(get_db_session),
-) -> WebhookResponse:
-    """Receive, validate, and deduplicate TradingView webhook signal.
+) -> WebhookResponse | JSONResponse:
+    """Receive, validate, deduplicate, and rate-limit TradingView webhook signal.
 
     Validates payload structure and business rules. Detects duplicates within
-    60-second window and rejects them idempotently. Only new signals are
-    stored and processed further.
+    60-second window and rejects them idempotently. Rate limits to 10 signals
+    per minute per token. Only new, non-rate-limited signals are stored and
+    processed further.
 
     Story 1.4: Signal Payload Parsing & Validation
     - AC1: Valid payload returns signal_id
@@ -81,6 +84,13 @@ async def webhook_handler(
     - AC4: Memory safely bounded
     - AC5: Idempotent 200 OK response for duplicates
 
+    Story 1.6: Rate Limiting
+    - AC1: Up to 10 signals per minute accepted
+    - AC2: 11th+ signals rejected with 429
+    - AC3: Window resets after 60 seconds
+    - AC4: Per-token isolation
+    - AC5: Duplicates don't count toward rate limit
+
     Args:
         request: FastAPI request for accessing raw body if needed
         payload: Validated SignalPayload from Pydantic model
@@ -89,6 +99,7 @@ async def webhook_handler(
 
     Returns:
         WebhookResponse with signal_id and status ("received" or "duplicate")
+        or JSONResponse with 429 for rate limit exceeded
 
     Raises:
         HTTPException: 400 for validation errors, 401 for invalid token
@@ -104,6 +115,7 @@ async def webhook_handler(
     )
 
     # Check for duplicates (Story 1.5, AC2, AC5)
+    # Duplicates don't count toward rate limit (Story 1.6, AC5)
     if deduplicator and deduplicator.is_duplicate(signal_id):
         log = logger.bind(signal_id=signal_id, side=payload.side, symbol=payload.symbol)
         log.info("webhook_duplicate_signal_rejected")
@@ -111,6 +123,30 @@ async def webhook_handler(
             status="duplicate",
             signal_id=signal_id,
             code="DUPLICATE_SIGNAL",
+        )
+
+    # Get rate limiter from app state (Story 1.6)
+    rate_limiter: RateLimiter | None = getattr(
+        request.app.state, "rate_limiter", None
+    )
+
+    # Check rate limit (Story 1.6, AC2)
+    # Rate limit check happens AFTER deduplication, so duplicates don't count
+    if rate_limiter and not rate_limiter.is_allowed(token):
+        retry_after = rate_limiter.get_retry_after(token)
+        log = logger.bind(signal_id=signal_id, side=payload.side, symbol=payload.symbol)
+        log.warning("webhook_rate_limited", retry_after_seconds=retry_after)
+
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": "Rate limit exceeded",
+                "code": "RATE_LIMITED",
+                "signal_id": signal_id,
+                "dex": None,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            },
+            headers={"Retry-After": str(retry_after)},
         )
 
     # New signal - store in database

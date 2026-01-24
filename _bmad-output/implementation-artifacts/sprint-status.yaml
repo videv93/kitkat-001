@@ -47,7 +47,7 @@ development_status:
   1-3-webhook-endpoint-with-authentication: done
   1-4-signal-payload-parsing-validation: review
   1-5-signal-deduplication: review
-  1-6-rate-limiting: backlog
+  1-6-rate-limiting: review
   epic-1-retrospective: optional
 
   # Epic 2: Extended DEX Integration & Order Execution
