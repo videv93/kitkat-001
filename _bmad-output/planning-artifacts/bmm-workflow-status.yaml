@@ -1,0 +1,99 @@
+# Workflow Status Template
+
+# This tracks progress through BMM methodology Analysis, Planning, and Solutioning phases.
+# Implementation phase is tracked separately in sprint-status.yaml
+
+# STATUS DEFINITIONS:
+# ==================
+# Initial Status (before completion):
+#   - required: Must be completed to progress
+#   - optional: Can be completed but not required
+#   - recommended: Strongly suggested but not required
+#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
+#
+# Completion Status:
+#   - {file-path}: File created/found (e.g., "docs/product-brief.md")
+#   - skipped: Optional/conditional workflow that was skipped
+
+generated: "2026-01-17"
+project: "kitkat-001"
+project_type: "software"
+selected_track: "enterprise"
+field_type: "greenfield"
+workflow_path: "enterprise-greenfield"
+
+# Discovery selections
+brainstorm_requested: false
+research_requested: false
+product_brief_requested: true
+
+# Workflow Status Tracking
+workflow_status:
+  phase_1_analysis:
+    name: "Analysis (Optional)"
+    workflows:
+      - id: "brainstorm-project"
+        status: "skipped"
+        agent: "analyst"
+        command: "/bmad:core:workflows:brainstorming"
+      - id: "research"
+        status: "skipped"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:research"
+      - id: "product-brief"
+        status: "_bmad-output/planning-artifacts/product-brief-kitkat-001-2026-01-17.md"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:create-product-brief"
+        completed: "2026-01-17"
+
+  phase_2_planning:
+    name: "Planning"
+    workflows:
+      - id: "prd"
+        status: "_bmad-output/planning-artifacts/prd.md"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:prd"
+        output: "Product Requirements Document with FRs and NFRs"
+        completed: "2026-01-18"
+        validated: "_bmad-output/planning-artifacts/prd-validation-report.md"
+        validation_result: "PASS (5/5 Excellent)"
+      - id: "create-ux-design"
+        status: "conditional:if_has_ui"
+        agent: "ux-designer"
+        command: "/bmad:bmm:workflows:create-ux-design"
+
+  phase_3_solutioning:
+    name: "Solutioning"
+    workflows:
+      - id: "create-architecture"
+        status: "_bmad-output/planning-artifacts/architecture.md"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:create-architecture"
+        output: "System architecture document"
+        completed: "2026-01-18"
+        validation_result: "PASS - Ready for Implementation"
+      - id: "create-epics-and-stories"
+        status: "_bmad-output/planning-artifacts/epics.md"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:create-epics-and-stories"
+        output: "5 epics, 33 stories, 48/48 FRs covered"
+        completed: "2026-01-19"
+        validation_result: "PASS - All validations passed"
+      - id: "test-design"
+        status: "optional"
+        agent: "tea"
+        command: "/bmad:bmm:workflows:testarch-test-design"
+        output: "System-level testability review"
+      - id: "implementation-readiness"
+        status: "required"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:check-implementation-readiness"
+
+  phase_4_implementation:
+    name: "Implementation"
+    workflows:
+      - id: "sprint-planning"
+        status: "required"
+        agent: "sm"
+        command: "/bmad:bmm:workflows:sprint-planning"
+        note: "Creates sprint plan - subsequent work tracked in sprint-status.yaml"

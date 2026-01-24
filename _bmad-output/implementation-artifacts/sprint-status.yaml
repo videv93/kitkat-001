@@ -1,0 +1,94 @@
+# generated: 2026-01-19
+# project: kitkat-001
+# project_key: kitkat-001
+# tracking_system: file-system
+# story_location: /opt/apps/kitkat-001/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-01-19
+project: kitkat-001
+project_key: kitkat-001
+tracking_system: file-system
+story_location: /opt/apps/kitkat-001/_bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Project Foundation & Webhook Handler
+  epic-1: in-progress
+  1-1-project-initialization: done
+  1-2-database-foundation: in-progress
+  1-3-webhook-endpoint-with-authentication: done
+  1-4-signal-payload-parsing-validation: review
+  1-5-signal-deduplication: review
+  1-6-rate-limiting: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Extended DEX Integration & Order Execution
+  epic-2: backlog
+  2-1-dex-adapter-interface: backlog
+  2-2-user-session-management: backlog
+  2-3-wallet-connection-signature: backlog
+  2-4-webhook-url-generation: backlog
+  2-5-extended-adapter-connection: backlog
+  2-6-extended-adapter-order-execution: backlog
+  2-7-retry-logic-with-exponential-backoff: backlog
+  2-8-execution-logging-partial-fills: backlog
+  2-9-signal-processor-fan-out: backlog
+  2-10-wallet-disconnect-revocation: backlog
+  2-11-graceful-shutdown: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Test Mode & Safe Onboarding
+  epic-3: backlog
+  3-1-test-mode-feature-flag: backlog
+  3-2-mock-dex-adapter: backlog
+  3-3-dry-run-execution-output: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: System Monitoring & Alerting
+  epic-4: backlog
+  4-1-health-service-dex-status: backlog
+  4-2-telegram-alert-service: backlog
+  4-3-auto-recovery-after-outage: backlog
+  4-4-error-logging-with-full-context: backlog
+  4-5-error-log-viewer: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Dashboard, Volume Stats & Configuration
+  epic-5: backlog
+  5-1-stats-service-volume-tracking: backlog
+  5-2-volume-display-today-week: backlog
+  5-3-execution-count-success-rate: backlog
+  5-4-dashboard-endpoint: backlog
+  5-5-onboarding-checklist: backlog
+  5-6-position-size-configuration: backlog
+  5-7-webhook-url-payload-display: backlog
+  5-8-telegram-configuration: backlog
+  epic-5-retrospective: optional
