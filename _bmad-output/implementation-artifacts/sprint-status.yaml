@@ -51,8 +51,8 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Extended DEX Integration & Order Execution
-  epic-2: backlog
-  2-1-dex-adapter-interface: backlog
+  epic-2: in-progress
+  2-1-dex-adapter-interface: done
   2-2-user-session-management: backlog
   2-3-wallet-connection-signature: backlog
   2-4-webhook-url-generation: backlog
