@@ -122,3 +122,50 @@ async def db_session():
 def client():
     """Provide FastAPI test client."""
     return TestClient(app)
+
+
+@pytest.fixture
+async def authenticated_user_and_token(db_session: AsyncSession):
+    """Create authenticated user with session and return token and user info."""
+    from kitkat.services.user_service import UserService
+    from kitkat.services.session_service import SessionService
+
+    user_service = UserService(db_session)
+    session_service = SessionService(db_session)
+
+    # Create user
+    user = await user_service.create_user(
+        wallet_address="0x742d35Cc6634C0532925a3b844Bc9e7595f6bEd0"
+    )
+
+    # Create session
+    session = await session_service.create_session(user.wallet_address)
+
+    return {
+        "user_id": user.id,
+        "wallet_address": user.wallet_address,
+        "webhook_token": user.webhook_token,
+        "session_token": session.token,
+    }
+
+
+@pytest.fixture
+async def test_user_session_headers(
+    db_session: AsyncSession, client: TestClient
+) -> dict:
+    """Provide Authorization header with valid session token."""
+    from kitkat.services.user_service import UserService
+    from kitkat.services.session_service import SessionService
+
+    user_service = UserService(db_session)
+    session_service = SessionService(db_session)
+
+    # Create user
+    user = await user_service.create_user(
+        wallet_address="0x742d35Cc6634C0532925a3b844Bc9e7595f6bEd0"
+    )
+
+    # Create session
+    session = await session_service.create_session(user.wallet_address)
+
+    return {"Authorization": f"Bearer {session.token}"}

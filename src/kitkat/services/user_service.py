@@ -1,6 +1,7 @@
 """User management service."""
 
 import json
+from hmac import compare_digest
 from typing import Optional
 
 import structlog
@@ -150,3 +151,30 @@ class UserService:
             fields=list(updates.keys()),
         )
         return config
+
+    async def get_user_by_webhook_token(self, token: str) -> Optional[User]:
+        """Retrieve user by webhook token (Story 2.4: AC3).
+
+        Uses constant-time comparison to prevent timing attacks.
+
+        Args:
+            token: The webhook token to look up.
+
+        Returns:
+            User: The user model if found, None otherwise.
+        """
+        # Query all users with webhook_token (we'll do constant-time comparison)
+        # This is not optimal, but safe for small user bases
+        # In production, store hashed webhook_token for indexed lookups
+        stmt = select(UserModel)
+        result = await self.db.execute(stmt)
+        users = result.scalars().all()
+
+        for user in users:
+            # Constant-time comparison to prevent timing attacks
+            if compare_digest(user.webhook_token, token):
+                logger.info("User found by webhook token", wallet_address=user.wallet_address[:10])
+                return User.model_validate(user)
+
+        logger.warning("Webhook token not found or invalid")
+        return None

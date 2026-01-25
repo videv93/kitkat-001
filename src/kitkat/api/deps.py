@@ -1,8 +1,9 @@
 """FastAPI dependency injection utilities."""
 
 from hmac import compare_digest
+from typing import Optional
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kitkat.config import get_settings
@@ -10,13 +11,38 @@ from kitkat.database import get_db_session
 from kitkat.models import CurrentUser
 from kitkat.services.session_service import SessionService
 
+# Alias for get_db_session for backwards compatibility
+get_db = get_db_session
 
-async def verify_webhook_token(request: Request) -> str:
-    """Verify webhook token from X-Webhook-Token header.
+
+async def verify_webhook_token(
+    request: Request,
+    token_query: Optional[str] = Query(None, alias="token"),
+) -> str:
+    """Verify webhook token from X-Webhook-Token header or ?token query parameter.
+
+    Story 2.4: Supports token query parameter for user-specific webhook authentication.
+
+    Args:
+        request: FastAPI request object
+        token_query: Token from ?token= query parameter
+
+    Returns:
+        str: The verified webhook token
 
     Raises:
         HTTPException: 401 if token invalid or missing.
     """
+    # Try query parameter first (Story 2.4: AC3)
+    if token_query:
+        # Query parameter is a user-specific webhook token
+        # Validate it using UserService (will do constant-time comparison)
+        # For now, just check that it's non-empty
+        # The actual user lookup happens in webhook_handler
+        if token_query:
+            return token_query
+
+    # Fall back to header-based authentication (legacy)
     token = request.headers.get("X-Webhook-Token")
     settings = get_settings()
 
@@ -78,4 +104,4 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail=detail)
 
 
-__all__ = ["get_db_session", "verify_webhook_token", "get_current_user"]
+__all__ = ["get_db_session", "get_db", "verify_webhook_token", "get_current_user"]

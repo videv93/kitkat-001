@@ -2,18 +2,21 @@
 
 import hashlib
 from datetime import datetime
-from typing import Literal
+from hmac import compare_digest
+from typing import Literal, Optional
 
 import structlog
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kitkat.api.deps import get_db_session, verify_webhook_token
+from kitkat.config import get_settings
 from kitkat.models import Signal, SignalPayload
 from kitkat.services import SignalDeduplicator
 from kitkat.services.rate_limiter import RateLimiter
+from kitkat.services.user_service import UserService
 
 logger = structlog.get_logger()
 
@@ -91,10 +94,15 @@ async def webhook_handler(
     - AC4: Per-token isolation
     - AC5: Duplicates don't count toward rate limit
 
+    Story 2.4: Webhook URL Generation
+    - AC3: Token-based authentication for user-specific webhooks
+    - AC4: Invalid token returns 401
+    - AC6: User association with signal
+
     Args:
         request: FastAPI request for accessing raw body if needed
         payload: Validated SignalPayload from Pydantic model
-        token: Verified webhook token from X-Webhook-Token header
+        token: Verified webhook token from X-Webhook-Token header or ?token query param
         db: AsyncSession for database operations
 
     Returns:
@@ -104,6 +112,28 @@ async def webhook_handler(
     Raises:
         HTTPException: 400 for validation errors, 401 for invalid token
     """
+    # Story 2.4: Check if this is a user-specific webhook token (not X-Webhook-Token)
+    # If token is not the system token, validate it against user webhook tokens
+    settings = get_settings()
+    is_user_webhook = False
+    user_id: Optional[int] = None
+
+    # Try to find user by webhook token (Story 2.4: AC3)
+    if not compare_digest(token, settings.webhook_token):
+        # This is a user webhook token, not the system token
+        is_user_webhook = True
+        user_service = UserService(db)
+        user = await user_service.get_user_by_webhook_token(token)
+        if not user:
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "Invalid token", "code": "INVALID_TOKEN"},
+            )
+        user_id = user.id
+        log_user = user.wallet_address[:10]
+    else:
+        log_user = "system"
+
     # Generate signal_id hash from payload (Story 1.4)
     payload_json = payload.model_dump_json()
     signal_id = generate_signal_hash(payload_json)
@@ -117,7 +147,13 @@ async def webhook_handler(
     # Check for duplicates (Story 1.5, AC2, AC5)
     # Duplicates don't count toward rate limit (Story 1.6, AC5)
     if deduplicator and deduplicator.is_duplicate(signal_id):
-        log = logger.bind(signal_id=signal_id, side=payload.side, symbol=payload.symbol)
+        log = logger.bind(
+            signal_id=signal_id,
+            side=payload.side,
+            symbol=payload.symbol,
+            user=log_user,
+            user_id=user_id,
+        )
         log.info("webhook_duplicate_signal_rejected")
         return WebhookResponse(
             status="duplicate",
@@ -134,7 +170,13 @@ async def webhook_handler(
     # Rate limit check happens AFTER deduplication, so duplicates don't count
     if rate_limiter and not rate_limiter.is_allowed(token):
         retry_after = rate_limiter.get_retry_after(token)
-        log = logger.bind(signal_id=signal_id, side=payload.side, symbol=payload.symbol)
+        log = logger.bind(
+            signal_id=signal_id,
+            side=payload.side,
+            symbol=payload.symbol,
+            user=log_user,
+            user_id=user_id,
+        )
         log.warning("webhook_rate_limited", retry_after_seconds=retry_after)
 
         return JSONResponse(
@@ -162,7 +204,13 @@ async def webhook_handler(
     await db.commit()
 
     # Log successful reception
-    log = logger.bind(signal_id=signal_id, side=payload.side, symbol=payload.symbol)
+    log = logger.bind(
+        signal_id=signal_id,
+        side=payload.side,
+        symbol=payload.symbol,
+        user=log_user,
+        user_id=user_id,
+    )
     log.info("webhook_signal_received")
 
     return WebhookResponse(status="received", signal_id=signal_id)

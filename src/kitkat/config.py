@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Feature Flags
     test_mode: bool = False
 
+    # Application host for URL generation (Story 2.4)
+    app_host: str = "localhost:8000"
+
     # Database
     database_url: str = ""
 

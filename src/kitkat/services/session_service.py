@@ -92,8 +92,17 @@ class SessionService:
         session.last_used = datetime.now(timezone.utc)
         await self.db.commit()
 
+        # Load user to get webhook_token (Story 2.4)
+        user_stmt = select(UserModel).where(UserModel.wallet_address == session.wallet_address)
+        user_result = await self.db.execute(user_stmt)
+        user = user_result.scalar_one_or_none()
+
         logger.info("Session validated, last_used updated")
-        return CurrentUser(wallet_address=session.wallet_address, session_id=session.id)
+        return CurrentUser(
+            wallet_address=session.wallet_address,
+            session_id=session.id,
+            webhook_token=user.webhook_token if user else "",
+        )
 
     async def cleanup_expired_sessions(self) -> int:
         """Delete all expired sessions.

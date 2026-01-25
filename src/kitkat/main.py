@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from kitkat.api.auth import router as auth_router
+from kitkat.api.config import router as config_router
 from kitkat.api.sessions import router as sessions_router
 from kitkat.api.users import router as users_router
 from kitkat.api.wallet import router as wallet_router
@@ -81,6 +82,7 @@ app.include_router(users_router)
 app.include_router(sessions_router)
 app.include_router(wallet_router)
 app.include_router(auth_router)
+app.include_router(config_router)
 
 
 @app.exception_handler(RequestValidationError)

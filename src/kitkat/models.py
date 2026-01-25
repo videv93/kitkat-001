@@ -234,6 +234,7 @@ class CurrentUser(BaseModel):
 
     wallet_address: str
     session_id: int
+    webhook_token: str
 
 
 # ============================================================================
@@ -309,3 +310,46 @@ class VerifyResponse(BaseModel):
     token: str = Field(..., description="Session token for authentication")
     expires_at: datetime = Field(..., description="Session expiration timestamp")
     wallet_address: str = Field(..., description="Verified wallet address")
+
+
+# ============================================================================
+# Webhook Configuration Models (Story 2.4)
+# ============================================================================
+
+
+class PayloadFormat(BaseModel):
+    """Webhook payload format specification."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    required_fields: list[str] = Field(
+        ..., description="Required fields in webhook payload"
+    )
+    optional_fields: list[str] = Field(
+        default_factory=list, description="Optional fields in webhook payload"
+    )
+    example: dict = Field(..., description="Example payload")
+
+
+class TradingViewSetup(BaseModel):
+    """TradingView alert configuration instructions."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    alert_name: str = Field(..., description="Recommended alert name in TradingView")
+    webhook_url: str = Field(..., description="Complete webhook URL with token")
+    message_template: str = Field(
+        ..., description="Ready-to-paste message template for TradingView"
+    )
+
+
+class WebhookConfigResponse(BaseModel):
+    """Response for webhook configuration endpoint."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    webhook_url: str = Field(..., description="Complete webhook URL for user")
+    payload_format: PayloadFormat = Field(..., description="Payload format specification")
+    tradingview_setup: TradingViewSetup = Field(
+        ..., description="TradingView setup instructions"
+    )
