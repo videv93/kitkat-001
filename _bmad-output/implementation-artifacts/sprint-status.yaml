@@ -53,8 +53,8 @@ development_status:
   # Epic 2: Extended DEX Integration & Order Execution
   epic-2: in-progress
   2-1-dex-adapter-interface: done
-  2-2-user-session-management: backlog
-  2-3-wallet-connection-signature: backlog
+  2-2-user-session-management: done
+  2-3-wallet-connection-signature: review
   2-4-webhook-url-generation: backlog
   2-5-extended-adapter-connection: backlog
   2-6-extended-adapter-order-execution: backlog

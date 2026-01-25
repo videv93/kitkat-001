@@ -5,10 +5,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
 from kitkat.database import Base
+from kitkat.main import app
 
 
 @pytest.fixture(autouse=True)
@@ -103,3 +105,20 @@ async def test_db_session():
 
         # Cleanup
         await engine.dispose()
+
+
+@pytest.fixture
+async def db_session():
+    """Provide async DB session for tests."""
+    from kitkat.database import get_async_session_factory
+
+    factory = get_async_session_factory()
+    async with factory() as session:
+        yield session
+        await session.close()
+
+
+@pytest.fixture
+def client():
+    """Provide FastAPI test client."""
+    return TestClient(app)

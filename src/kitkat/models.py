@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from kitkat.database import Base
@@ -167,3 +167,145 @@ class OrderUpdate:
     filled_amount: Decimal
     remaining_amount: Decimal
     timestamp: datetime
+
+
+# ============================================================================
+# User & Session Management Models (Story 2.2)
+# ============================================================================
+
+
+class UserCreate(BaseModel):
+    """Request model for creating a new user."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wallet_address: str = Field(..., min_length=1, max_length=255)
+    # Note: signature validation happens in Story 2.3
+
+
+class User(BaseModel):
+    """Persisted user with configuration."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, from_attributes=True)
+
+    id: int
+    wallet_address: str
+    webhook_token: str
+    config_data: dict = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("config_data", mode="before")
+    @classmethod
+    def parse_config_data(cls, v):
+        """Parse config_data from JSON string if needed."""
+        if isinstance(v, str):
+            import json
+
+            return json.loads(v)
+        return v if v else {}
+
+
+class SessionCreate(BaseModel):
+    """Request model for creating a new session."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wallet_address: str = Field(..., min_length=1, max_length=255)
+
+
+class Session(BaseModel):
+    """Persisted session token."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, from_attributes=True)
+
+    id: int
+    token: str
+    wallet_address: str
+    created_at: datetime
+    expires_at: datetime
+    last_used: datetime
+
+
+class CurrentUser(BaseModel):
+    """Authenticated user context from valid session."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wallet_address: str
+    session_id: int
+
+
+# ============================================================================
+# Wallet Connection Models (Story 2.3)
+# ============================================================================
+
+
+class ChallengeRequest(BaseModel):
+    """Request model for wallet challenge generation."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wallet_address: str = Field(..., min_length=42, max_length=42)
+
+    @field_validator("wallet_address")
+    @classmethod
+    def validate_ethereum_address(cls, v: str) -> str:
+        """Validate Ethereum address format (0x + 40 hex chars)."""
+        if not v.startswith("0x"):
+            raise ValueError("Invalid Ethereum address: must start with 0x")
+        if len(v) != 42:
+            raise ValueError("Invalid Ethereum address: must be 42 characters")
+        try:
+            int(v[2:], 16)  # Validate hex
+        except ValueError:
+            raise ValueError("Invalid Ethereum address: invalid hex characters")
+        return v
+
+
+class ChallengeResponse(BaseModel):
+    """Response model for wallet challenge."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    message: str = Field(..., description="Challenge message to sign")
+    nonce: str = Field(..., description="Unique nonce for replay prevention")
+    expires_at: datetime = Field(..., description="Challenge expiration timestamp")
+    explanation: str = Field(
+        ...,
+        description="User-facing explanation of what signing means",
+    )
+
+
+class VerifyRequest(BaseModel):
+    """Request model for signature verification."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wallet_address: str = Field(..., min_length=42, max_length=42)
+    signature: str = Field(..., min_length=1)
+    nonce: str = Field(..., min_length=1)
+
+    @field_validator("wallet_address")
+    @classmethod
+    def validate_ethereum_address(cls, v: str) -> str:
+        """Validate Ethereum address format."""
+        if not v.startswith("0x"):
+            raise ValueError("Invalid Ethereum address: must start with 0x")
+        if len(v) != 42:
+            raise ValueError("Invalid Ethereum address: must be 42 characters")
+        try:
+            int(v[2:], 16)
+        except ValueError:
+            raise ValueError("Invalid Ethereum address: invalid hex characters")
+        return v
+
+
+class VerifyResponse(BaseModel):
+    """Response model for successful signature verification."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    token: str = Field(..., description="Session token for authentication")
+    expires_at: datetime = Field(..., description="Session expiration timestamp")
+    wallet_address: str = Field(..., description="Verified wallet address")

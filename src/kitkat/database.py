@@ -1,11 +1,49 @@
 """Database configuration and session management."""
 
+from datetime import datetime, timezone
+from typing import List
+
 import structlog
-from sqlalchemy import event
+from sqlalchemy import DateTime, ForeignKey, String, Text, event
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship, sessionmaker
+from sqlalchemy.types import TypeDecorator
 
 logger = structlog.get_logger()
+
+
+class UtcDateTime(TypeDecorator):
+    """Store timezone-aware UTC datetimes as naive UTC in SQLite.
+
+    SQLite doesn't understand timezones, so we:
+    1. Accept timezone-aware datetimes from Python
+    2. Store them as naive UTC in the database
+    3. Return them as timezone-aware UTC when retrieved
+    """
+
+    impl = DateTime(timezone=False)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        """Convert timezone-aware datetime to naive UTC before storing."""
+        if value is not None:
+            if value.tzinfo is not None:
+                # Convert to UTC and strip timezone
+                value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value, dialect):
+        """Convert naive UTC from DB back to timezone-aware UTC."""
+        if value is not None:
+            # Assume stored value is UTC and make it timezone-aware
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+
+def _utc_now():
+    """Get current UTC time as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
 
 # SQLAlchemy declarative base for models
 Base = declarative_base()
@@ -16,7 +54,16 @@ _async_session = None
 
 
 def _create_engine():
-    """Create async SQLAlchemy engine with WAL mode configuration."""
+    """Create async SQLAlchemy engine with WAL mode configuration.
+
+    Database Configuration:
+    - WAL mode (Write-Ahead Logging): Enables concurrent readers and writers
+    - PRAGMA synchronous=NORMAL: Balance between safety and performance
+    - Isolation level: SERIALIZABLE (SQLite default, enforced via constraints)
+      - Prevents race conditions through unique constraint enforcement
+      - IntegrityError raised on constraint violation during commit
+      - Applications must catch IntegrityError for duplicate key handling
+    """
     from kitkat.config import get_settings
 
     settings = get_settings()
@@ -33,6 +80,8 @@ def _create_engine():
         dbapi_conn.execute("PRAGMA journal_mode=WAL")
         dbapi_conn.execute("PRAGMA synchronous=NORMAL")
         dbapi_conn.execute("PRAGMA cache_size=10000")
+        # SQLite default isolation level is SERIALIZABLE
+        # This ensures unique constraints prevent race conditions
 
     return engine
 
@@ -83,3 +132,58 @@ def engine():
 def async_session():
     """Get async session factory."""
     return get_async_session_factory()
+
+
+# ============================================================================
+# ORM Models for User & Session Management (Story 2.2)
+# ============================================================================
+
+
+class UserModel(Base):
+    """SQLAlchemy ORM model for users table."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    wallet_address: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
+    webhook_token: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
+    config_data: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, default=_utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, default=_utc_now, onupdate=_utc_now, nullable=False
+    )
+
+    # Relationship for cascading deletes
+    sessions: Mapped[List["SessionModel"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class SessionModel(Base):
+    """SQLAlchemy ORM model for sessions table."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    wallet_address: Mapped[str] = mapped_column(
+        String(255), ForeignKey("users.wallet_address"), index=True, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, default=_utc_now, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, index=True, nullable=False
+    )
+    last_used: Mapped[datetime] = mapped_column(
+        UtcDateTime, default=_utc_now, nullable=False
+    )
+
+    # Relationship
+    user: Mapped["UserModel"] = relationship(back_populates="sessions")

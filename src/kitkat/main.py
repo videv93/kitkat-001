@@ -9,6 +9,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from kitkat.api.auth import router as auth_router
+from kitkat.api.sessions import router as sessions_router
+from kitkat.api.users import router as users_router
+from kitkat.api.wallet import router as wallet_router
 from kitkat.api.webhook import router as webhook_router
 from kitkat.config import get_settings
 from kitkat.database import Base, async_session, get_engine
@@ -71,8 +75,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Mount webhook router
+# Mount routers
 app.include_router(webhook_router)
+app.include_router(users_router)
+app.include_router(sessions_router)
+app.include_router(wallet_router)
+app.include_router(auth_router)
 
 
 @app.exception_handler(RequestValidationError)
