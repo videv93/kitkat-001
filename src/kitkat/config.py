@@ -18,6 +18,23 @@ class Settings(BaseSettings):
     # DEX Credentials
     extended_api_key: str = ""
     extended_api_secret: str = ""
+    extended_stark_private_key: str = ""  # For SNIP12 order signing
+    extended_account_address: str = ""  # Starknet account address
+    extended_network: str = "testnet"  # "mainnet" or "testnet"
+
+    @property
+    def extended_api_base_url(self) -> str:
+        """Get Extended API base URL based on network."""
+        if self.extended_network == "mainnet":
+            return "https://api.starknet.extended.exchange/api/v1"
+        return "https://api.starknet.sepolia.extended.exchange/api/v1"
+
+    @property
+    def extended_ws_url(self) -> str:
+        """Get Extended WebSocket URL based on network."""
+        if self.extended_network == "mainnet":
+            return "wss://api.starknet.extended.exchange/stream.extended.exchange/v1"
+        return "wss://starknet.sepolia.extended.exchange/stream.extended.exchange/v1"
 
     # Feature Flags
     test_mode: bool = False

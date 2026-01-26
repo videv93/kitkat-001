@@ -56,7 +56,7 @@ development_status:
   2-2-user-session-management: done
   2-3-wallet-connection-signature: review
   2-4-webhook-url-generation: review
-  2-5-extended-adapter-connection: backlog
+  2-5-extended-adapter-connection: review
   2-6-extended-adapter-order-execution: backlog
   2-7-retry-logic-with-exponential-backoff: backlog
   2-8-execution-logging-partial-fills: backlog
