@@ -9,6 +9,7 @@ Story 2.1: DEX Adapter Interface - defines the contract all adapters must follow
 
 from kitkat.adapters.base import DEXAdapter
 from kitkat.adapters.extended import ExtendedAdapter
+from kitkat.adapters.mock import MockAdapter
 from kitkat.adapters.exceptions import (
     DEXError,
     DEXTimeoutError,
@@ -33,6 +34,7 @@ __all__ = [
     "DEXAdapter",
     # Implementations
     "ExtendedAdapter",
+    "MockAdapter",
     # Exceptions (all inherit from DEXError)
     "DEXError",
     "DEXTimeoutError",

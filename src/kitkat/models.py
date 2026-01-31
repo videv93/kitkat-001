@@ -422,3 +422,43 @@ class PartialFillAlert(BaseModel):
     filled_amount: Decimal = Field(..., ge=0, description="Amount filled")
     remaining_amount: Decimal = Field(..., ge=0, description="Amount remaining")
     timestamp: datetime = Field(..., description="Alert timestamp")
+
+
+# ============================================================================
+# Signal Processor & Fan-Out Models (Story 2.9)
+# ============================================================================
+
+
+class DEXExecutionResult(BaseModel):
+    """Result of executing a signal on a single DEX."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    dex_id: str = Field(..., description="DEX identifier (e.g., 'extended', 'mock')")
+    status: Literal["filled", "partial", "failed", "error"] = Field(
+        ..., description="Execution status"
+    )
+    order_id: str | None = Field(None, description="DEX-assigned order ID (None on failure)")
+    filled_amount: Decimal = Field(
+        default=Decimal("0"), ge=0, description="Amount filled"
+    )
+    error_message: str | None = Field(None, description="Error message on failure")
+    latency_ms: int = Field(ge=0, description="Execution latency in milliseconds")
+
+
+class SignalProcessorResponse(BaseModel):
+    """Aggregated response from processing a signal across all DEXs."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    signal_id: str = Field(..., description="Signal hash for correlation")
+    overall_status: Literal["success", "partial", "failed"] = Field(
+        ..., description="Aggregate status across all DEXs"
+    )
+    results: list[DEXExecutionResult] = Field(
+        ..., description="Per-DEX execution results"
+    )
+    total_dex_count: int = Field(..., description="Total DEXs attempted")
+    successful_count: int = Field(..., description="DEXs that executed successfully")
+    failed_count: int = Field(..., description="DEXs that failed")
+    timestamp: datetime = Field(..., description="When processing completed")

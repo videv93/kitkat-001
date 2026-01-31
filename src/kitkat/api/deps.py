@@ -10,6 +10,8 @@ from kitkat.config import get_settings
 from kitkat.database import get_db_session
 from kitkat.models import CurrentUser
 from kitkat.services.session_service import SessionService
+from kitkat.services.signal_processor import SignalProcessor
+from kitkat.services.execution_service import ExecutionService
 
 # Alias for get_db_session for backwards compatibility
 get_db = get_db_session
@@ -104,4 +106,68 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail=detail)
 
 
-__all__ = ["get_db_session", "get_db", "verify_webhook_token", "get_current_user"]
+# Global SignalProcessor instance (singleton pattern)
+_signal_processor: Optional[SignalProcessor] = None
+
+
+async def get_signal_processor(
+    db: AsyncSession = Depends(get_db_session),
+) -> SignalProcessor:
+    """Get or create SignalProcessor with configured adapters.
+
+    Story 2.9: Dependency injection for SignalProcessor with lazy initialization.
+    Adapters are created and connected once, then reused for all signals.
+
+    Args:
+        db: Database session for ExecutionService
+
+    Returns:
+        SignalProcessor: Initialized processor with all configured adapters
+
+    Note:
+        In test mode, uses MockAdapter. In production, uses ExtendedAdapter.
+        Connection errors are logged but don't fail - adapters will simply
+        be marked as inactive until reconnection succeeds.
+    """
+    global _signal_processor
+
+    if _signal_processor is None:
+        from kitkat.adapters.extended import ExtendedAdapter
+        from kitkat.adapters.mock import MockAdapter
+
+        settings = get_settings()
+
+        # Select adapters based on test mode
+        if settings.test_mode:
+            adapters = [MockAdapter()]
+        else:
+            adapters = [ExtendedAdapter(settings)]
+
+        # Connect all adapters - log but don't fail on connection errors
+        # This allows the system to continue even if a DEX is temporarily unavailable
+        connected_adapters = []
+        for adapter in adapters:
+            try:
+                await adapter.connect()
+                connected_adapters.append(adapter)
+            except Exception as e:
+                # Log error but continue - adapter will be inactive
+                import structlog
+                log = structlog.get_logger()
+                log.warning(
+                    "Failed to connect adapter",
+                    adapter=adapter.dex_id,
+                    error=str(e),
+                )
+                # Still add adapter to list - it will be filtered by get_active_adapters()
+
+        execution_service = ExecutionService(db)
+        _signal_processor = SignalProcessor(
+            adapters=adapters if adapters else [MockAdapter()],
+            execution_service=execution_service,
+        )
+
+    return _signal_processor
+
+
+__all__ = ["get_db_session", "get_db", "verify_webhook_token", "get_current_user", "get_signal_processor"]

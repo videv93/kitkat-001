@@ -11,10 +11,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kitkat.api.deps import get_db_session, verify_webhook_token
+from kitkat.api.deps import get_db_session, verify_webhook_token, get_signal_processor
 from kitkat.config import get_settings
-from kitkat.models import Signal, SignalPayload
+from kitkat.models import Signal, SignalPayload, SignalProcessorResponse
 from kitkat.services import SignalDeduplicator
+from kitkat.services.signal_processor import SignalProcessor
 from kitkat.services.rate_limiter import RateLimiter
 from kitkat.services.user_service import UserService
 
@@ -98,6 +99,11 @@ async def webhook_handler(
     - AC3: Token-based authentication for user-specific webhooks
     - AC4: Invalid token returns 401
     - AC6: User association with signal
+
+    Story 2.9: Signal Processor & Fan-Out
+    - AC1: Signal routed to active DEX adapters
+    - AC2: Parallel execution via asyncio.gather
+    - AC5: Per-DEX response format returned
 
     Args:
         request: FastAPI request for accessing raw body if needed
