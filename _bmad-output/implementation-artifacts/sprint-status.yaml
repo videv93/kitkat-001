@@ -43,7 +43,7 @@ development_status:
   # Epic 1: Project Foundation & Webhook Handler
   epic-1: in-progress
   1-1-project-initialization: done
-  1-2-database-foundation: in-progress
+  1-2-database-foundation: review
   1-3-webhook-endpoint-with-authentication: done
   1-4-signal-payload-parsing-validation: review
   1-5-signal-deduplication: review
@@ -61,8 +61,8 @@ development_status:
   2-7-retry-logic-with-exponential-backoff: review
   2-8-execution-logging-partial-fills: done
   2-9-signal-processor-fan-out: review
-  2-10-wallet-disconnect-revocation: ready-for-dev
-  2-11-graceful-shutdown: backlog
+  2-10-wallet-disconnect-revocation: done
+  2-11-graceful-shutdown: done
   epic-2-retrospective: optional
 
   # Epic 3: Test Mode & Safe Onboarding

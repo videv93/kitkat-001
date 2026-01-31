@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 
@@ -17,7 +18,7 @@ from kitkat.api.wallet import router as wallet_router
 from kitkat.api.webhook import router as webhook_router
 from kitkat.config import get_settings
 from kitkat.database import Base, get_async_session_factory, get_engine
-from kitkat.services import SignalDeduplicator
+from kitkat.services import SignalDeduplicator, ShutdownManager
 from kitkat.services.rate_limiter import RateLimiter
 
 logger = structlog.get_logger()
@@ -26,18 +27,21 @@ logger = structlog.get_logger()
 deduplicator: SignalDeduplicator | None = None
 # Global rate limiter singleton - initialized in lifespan
 rate_limiter: RateLimiter | None = None
+# Global shutdown manager singleton - initialized in lifespan
+shutdown_manager: ShutdownManager | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup/shutdown."""
-    global deduplicator, rate_limiter
+    global deduplicator, rate_limiter, shutdown_manager
 
     # Startup
     settings = get_settings()
     app.state.settings = settings
 
-    # Initialize database with error handling
+    # Initialize database with comprehensive error handling
+    engine = None
     try:
         engine = get_engine()
         async with engine.begin() as conn:
@@ -52,6 +56,16 @@ async def lifespan(app: FastAPI):
             logger.info("Database journal mode enabled", mode=mode)
     except Exception as e:
         logger.error("Database initialization failed", error=str(e))
+        # Ensure engine cleanup on failure to prevent partial initialization state
+        if engine is not None:
+            try:
+                await engine.dispose()
+                logger.info("Engine disposed after initialization failure")
+            except Exception as cleanup_error:
+                logger.warning(
+                    "Failed to dispose engine during error cleanup",
+                    error=str(cleanup_error),
+                )
         raise RuntimeError(f"Failed to initialize database: {e}") from e
 
     # Initialize signal deduplicator (Story 1.5)
@@ -64,11 +78,43 @@ async def lifespan(app: FastAPI):
     app.state.rate_limiter = rate_limiter
     logger.info("Rate limiter initialized", window_seconds=60, max_requests=10)
 
+    # Initialize shutdown manager (Story 2.11)
+    shutdown_manager = ShutdownManager(
+        grace_period_seconds=settings.shutdown_grace_period_seconds
+    )
+    app.state.shutdown_manager = shutdown_manager
+    logger.info("Shutdown manager initialized", grace_period=settings.shutdown_grace_period_seconds)
+
     yield
 
-    # Shutdown
+    # Shutdown sequence (Story 2.11)
+    logger.info("Shutdown signal received - initiating graceful shutdown")
+    shutdown_manager.initiate_shutdown()
+
+    # Wait for in-flight orders to complete
+    clean_shutdown = await shutdown_manager.wait_for_completion()
+
+    if clean_shutdown:
+        logger.info("Graceful shutdown complete - all orders finished")
+    else:
+        logger.warning("Forced shutdown - some orders may be incomplete")
+
+    # Disconnect all adapters (Story 2.11 AC5)
+    # Use timeout to prevent shutdown from hanging if disconnect is stuck
+    adapters = getattr(app.state, "adapters", [])
+    for adapter in adapters:
+        try:
+            await asyncio.wait_for(adapter.disconnect(), timeout=5.0)
+            logger.info("Adapter disconnected", dex_id=adapter.dex_id)
+        except asyncio.TimeoutError:
+            logger.warning("Adapter disconnect timeout", dex_id=adapter.dex_id, timeout_seconds=5)
+        except Exception as e:
+            logger.warning("Adapter disconnect failed", dex_id=adapter.dex_id, error=str(e))
+
+    # Cleanup other resources
     deduplicator = None
     rate_limiter = None
+    shutdown_manager = None
     await engine.dispose()
     logger.info("Database engine disposed")
 

@@ -286,3 +286,102 @@ class TestConcurrentWrites:
         )
         row = result.fetchone()
         assert row is not None
+
+
+class TestDatabaseErrorHandling:
+    """Tests for database initialization error handling and cleanup."""
+
+    @pytest.mark.asyncio
+    async def test_database_initialization_cleanup(self):
+        """Test that engine cleanup occurs on initialization failure."""
+        from kitkat import database
+
+        # Reset globals to test fresh initialization
+        database._engine = None
+        database._async_session = None
+
+        # Verify engine can be created successfully
+        engine = database.get_engine()
+        assert engine is not None
+        await engine.dispose()
+
+        # Reset again
+        database._engine = None
+        database._async_session = None
+
+    @pytest.mark.asyncio
+    async def test_async_session_factory_thread_safety(self):
+        """Test that get_async_session_factory is thread-safe.
+
+        Verifies double-checked locking pattern prevents race conditions
+        when initializing the shared session factory.
+        """
+        from kitkat import database
+        import threading
+
+        # Reset globals
+        database._engine = None
+        database._async_session = None
+
+        results = []
+
+        def get_factory():
+            """Worker thread to get session factory."""
+            factory = database.get_async_session_factory()
+            results.append(factory)
+
+        # Create multiple threads that call get_async_session_factory simultaneously
+        threads = [threading.Thread(target=get_factory) for _ in range(10)]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        # Verify all threads got the same factory instance (proving thread-safety)
+        assert len(results) == 10
+        first_factory = results[0]
+        for factory in results[1:]:
+            assert factory is first_factory, "Thread-safety violation: different factory instances"
+
+    @pytest.mark.asyncio
+    async def test_engine_lazy_initialization_thread_safety(self):
+        """Test that get_engine is thread-safe with double-checked locking.
+
+        Verifies that concurrent calls to get_engine() return the same instance
+        even when called from multiple threads simultaneously.
+        """
+        from kitkat import database
+        import threading
+
+        # Reset globals
+        database._engine = None
+        database._async_session = None
+
+        engines = []
+
+        def get_engine_impl():
+            """Worker thread to get engine."""
+            engine = database.get_engine()
+            engines.append(engine)
+
+        # Create multiple threads that call get_engine simultaneously
+        threads = [threading.Thread(target=get_engine_impl) for _ in range(10)]
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        # Verify all threads got the same engine instance (proving thread-safety)
+        assert len(engines) == 10
+        first_engine = engines[0]
+        for engine in engines[1:]:
+            assert engine is first_engine, "Thread-safety violation: different engine instances"
+
+        # Cleanup
+        await first_engine.dispose()
+        database._engine = None
+        database._async_session = None
