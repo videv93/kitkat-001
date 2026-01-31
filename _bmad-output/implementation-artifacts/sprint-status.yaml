@@ -43,7 +43,7 @@ development_status:
   # Epic 1: Project Foundation & Webhook Handler
   epic-1: in-progress
   1-1-project-initialization: done
-  1-2-database-foundation: review
+  1-2-database-foundation: done
   1-3-webhook-endpoint-with-authentication: done
   1-4-signal-payload-parsing-validation: done
   1-5-signal-deduplication: done
