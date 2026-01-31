@@ -1,6 +1,6 @@
 # Story 4.1: Health Service & DEX Status
 
-Status: ready-for-dev
+Status: review
 
 <!-- Implementation ready - comprehensive developer guide with all critical context from Epic 1-3 implementations -->
 
@@ -24,69 +24,69 @@ So that **I know if my trades are being executed or if there's an issue**.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create HealthService class (AC: #1, #3)
-  - [ ] Subtask 1.1: Define `HealthService` in `src/kitkat/services/health.py`
-  - [ ] Subtask 1.2: Constructor accepts list of DEX adapters
-  - [ ] Subtask 1.3: Implement `get_system_health()` async method
-  - [ ] Subtask 1.4: Track component error counts (last 5 minutes)
-  - [ ] Subtask 1.5: Call `adapter.health_check()` for each adapter
-  - [ ] Subtask 1.6: Aggregate per-DEX results with latency and last_successful
-  - [ ] Subtask 1.7: Implement status aggregation logic (healthy/degraded/offline)
+- [x] Task 1: Create HealthService class (AC: #1, #3)
+  - [x] Subtask 1.1: Define `HealthService` in `src/kitkat/services/health.py`
+  - [x] Subtask 1.2: Constructor accepts list of DEX adapters
+  - [x] Subtask 1.3: Implement `get_system_health()` async method
+  - [x] Subtask 1.4: Track component error counts (last 5 minutes)
+  - [x] Subtask 1.5: Call `adapter.health_check()` for each adapter
+  - [x] Subtask 1.6: Aggregate per-DEX results with latency and last_successful
+  - [x] Subtask 1.7: Implement status aggregation logic (healthy/degraded/offline)
 
-- [ ] Task 2: Create SystemHealth Pydantic models (AC: #2, #3)
-  - [ ] Subtask 2.1: Define `DEXHealth` model with dex_id, status, latency_ms, last_successful, error_count
-  - [ ] Subtask 2.2: Define `SystemHealth` model with status, components dict, timestamp
-  - [ ] Subtask 2.3: Add to `src/kitkat/models.py` with full documentation
-  - [ ] Subtask 2.4: Include type hints for all fields
-  - [ ] Subtask 2.5: Add field validators if needed (e.g., latency_ms >= 0)
+- [x] Task 2: Create SystemHealth Pydantic models (AC: #2, #3)
+  - [x] Subtask 2.1: Define `DEXHealth` model with dex_id, status, latency_ms, last_successful, error_count
+  - [x] Subtask 2.2: Define `SystemHealth` model with status, components dict, timestamp
+  - [x] Subtask 2.3: Add to `src/kitkat/models.py` with full documentation
+  - [x] Subtask 2.4: Include type hints for all fields
+  - [x] Subtask 2.5: Add field validators if needed (e.g., latency_ms >= 0)
 
-- [ ] Task 3: Implement error tracking (AC: #3)
-  - [ ] Subtask 3.1: Create in-memory error counter for each DEX
-  - [ ] Subtask 3.2: Track errors with timestamps (5-minute rolling window)
-  - [ ] Subtask 3.3: Clean up old errors automatically
-  - [ ] Subtask 3.4: Count errors per DEX in error_count field
-  - [ ] Subtask 3.5: Reset counters on successful health check
+- [x] Task 3: Implement error tracking (AC: #3)
+  - [x] Subtask 3.1: Create in-memory error counter for each DEX
+  - [x] Subtask 3.2: Track errors with timestamps (5-minute rolling window)
+  - [x] Subtask 3.3: Clean up old errors automatically
+  - [x] Subtask 3.4: Count errors per DEX in error_count field
+  - [x] Subtask 3.5: Reset counters on successful health check
 
-- [ ] Task 4: Create /api/health endpoint (AC: #4)
-  - [ ] Subtask 4.1: Create `src/kitkat/api/health.py` router
-  - [ ] Subtask 4.2: Define `GET /api/health` endpoint (unauthenticated)
-  - [ ] Subtask 4.3: Call health service and return response
-  - [ ] Subtask 4.4: Include test_mode flag from settings
-  - [ ] Subtask 4.5: Calculate uptime_seconds (seconds since app started)
-  - [ ] Subtask 4.6: Format response as per AC#4 specification
-  - [ ] Subtask 4.7: Register health router in main.py
+- [x] Task 4: Create /api/health endpoint (AC: #4)
+  - [x] Subtask 4.1: Create `src/kitkat/api/health.py` router
+  - [x] Subtask 4.2: Define `GET /api/health` endpoint (unauthenticated)
+  - [x] Subtask 4.3: Call health service and return response
+  - [x] Subtask 4.4: Include test_mode flag from settings
+  - [x] Subtask 4.5: Calculate uptime_seconds (seconds since app started)
+  - [x] Subtask 4.6: Format response as per AC#4 specification
+  - [x] Subtask 4.7: Register health router in main.py
 
-- [ ] Task 5: Implement status aggregation logic (AC: #5)
-  - [ ] Subtask 5.1: Create aggregation algorithm in HealthService
-  - [ ] Subtask 5.2: Healthy = all DEXs healthy
-  - [ ] Subtask 5.3: Degraded = at least one unhealthy, at least one healthy
-  - [ ] Subtask 5.4: Offline = all DEXs offline
-  - [ ] Subtask 5.5: Test all state combinations
-  - [ ] Subtask 5.6: Handle edge case with no adapters
+- [x] Task 5: Implement status aggregation logic (AC: #5)
+  - [x] Subtask 5.1: Create aggregation algorithm in HealthService
+  - [x] Subtask 5.2: Healthy = all DEXs healthy
+  - [x] Subtask 5.3: Degraded = at least one unhealthy, at least one healthy
+  - [x] Subtask 5.4: Offline = all DEXs offline
+  - [x] Subtask 5.5: Test all state combinations
+  - [x] Subtask 5.6: Handle edge case with no adapters
 
-- [ ] Task 6: Integrate HealthService into dependencies (AC: #1, #3)
-  - [ ] Subtask 6.1: Create singleton HealthService in `deps.py`
-  - [ ] Subtask 6.2: Pass adapters list to constructor
-  - [ ] Subtask 6.3: Provide via FastAPI Depends() mechanism
-  - [ ] Subtask 6.4: Thread-safe initialization with double-checked locking
-  - [ ] Subtask 6.5: Make accessible to other services (alert, stats)
+- [x] Task 6: Integrate HealthService into dependencies (AC: #1, #3)
+  - [x] Subtask 6.1: Create singleton HealthService in `deps.py`
+  - [x] Subtask 6.2: Pass adapters list to constructor
+  - [x] Subtask 6.3: Provide via FastAPI Depends() mechanism
+  - [x] Subtask 6.4: Thread-safe initialization with double-checked locking
+  - [x] Subtask 6.5: Make accessible to other services (alert, stats)
 
-- [ ] Task 7: Add structured logging (AC: #1, #3)
-  - [ ] Subtask 7.1: Bind context in HealthService methods
-  - [ ] Subtask 7.2: Log adapter health check attempts
-  - [ ] Subtask 7.3: Log status transitions (e.g., healthy → degraded)
-  - [ ] Subtask 7.4: Log errors with full details
-  - [ ] Subtask 7.5: Include dex_id in all health-related logs
+- [x] Task 7: Add structured logging (AC: #1, #3)
+  - [x] Subtask 7.1: Bind context in HealthService methods
+  - [x] Subtask 7.2: Log adapter health check attempts
+  - [x] Subtask 7.3: Log status transitions (e.g., healthy → degraded)
+  - [x] Subtask 7.4: Log errors with full details
+  - [x] Subtask 7.5: Include dex_id in all health-related logs
 
-- [ ] Task 8: Create comprehensive test suite (AC: #1-5)
-  - [ ] Subtask 8.1: Create `tests/services/test_health_service.py` (unit tests)
-  - [ ] Subtask 8.2: Create `tests/api/test_health_endpoint.py` (API tests)
-  - [ ] Subtask 8.3: Test system health calculation with all DEX combinations
-  - [ ] Subtask 8.4: Test endpoint response format and fields
-  - [ ] Subtask 8.5: Test error aggregation and 5-minute window
-  - [ ] Subtask 8.6: Test status transitions and edge cases
-  - [ ] Subtask 8.7: Test timeout handling in health checks
-  - [ ] Subtask 8.8: All tests passing before marking done
+- [x] Task 8: Create comprehensive test suite (AC: #1-5)
+  - [x] Subtask 8.1: Create `tests/services/test_health_service.py` (unit tests)
+  - [x] Subtask 8.2: Create `tests/api/test_health_endpoint.py` (API tests)
+  - [x] Subtask 8.3: Test system health calculation with all DEX combinations
+  - [x] Subtask 8.4: Test endpoint response format and fields
+  - [x] Subtask 8.5: Test error aggregation and 5-minute window
+  - [x] Subtask 8.6: Test status transitions and edge cases
+  - [x] Subtask 8.7: Test timeout handling in health checks
+  - [x] Subtask 8.8: All tests passing before marking done
 
 ## Dev Notes
 
@@ -544,7 +544,62 @@ Claude Haiku 4.5
 - Story 4.3 (Auto-Recovery): Will poll health_check() every 30 seconds
 - Story 5.4 (Dashboard): Will display health status from this service
 
+### Implementation Summary
+
+**Status:** Complete - All 8 tasks finished, 40/40 tests passing
+
+**Implementation Approach:**
+1. Created HealthService class with parallel health check aggregation (asyncio.gather)
+2. Implemented error tracking with 5-minute rolling window and automatic cleanup
+3. Built Pydantic models (DEXHealth, SystemHealth) for type-safe responses
+4. Created /api/health endpoint (unauthenticated, all required fields)
+5. Integrated as singleton in dependency injection (thread-safe initialization)
+6. Updated main.py to initialize adapters and track startup time
+7. Added comprehensive test coverage (17 unit + 23 integration tests)
+8. Integrated structlog logging throughout
+
+**Key Design Decisions:**
+- Used asyncio.gather() with return_exceptions=True for parallel, fault-tolerant health checks
+- 5-minute error window automatically cleaned up on each _get_error_count() call
+- Status aggregation: healthy (all healthy OR no adapters) | degraded (mixed) | offline (all offline)
+- Singleton HealthService with double-checked locking (thread-safe, no race conditions)
+- Adapters stored in app.state set during main.py lifespan, not hardcoded
+
+**Changes Made:**
+- Created 4 new files (service, endpoint, 2 test suites) - 940 lines
+- Modified 3 existing files (models, deps, main) - 130 lines total
+- All changes follow established patterns from Stories 1-3
+
+**Testing:**
+- Unit tests: Initialization, aggregation, error tracking, 5-min window, uptime, models
+- Integration tests: Endpoint returns 200, all response fields, dex_status structure, status values, error counting
+- All 40 tests passing, no regressions introduced
+
+### File List
+
+**Created:**
+- src/kitkat/services/health.py (168 lines)
+- src/kitkat/api/health.py (55 lines)
+- tests/services/test_health_service.py (362 lines)
+- tests/api/test_health_endpoint.py (355 lines)
+
+**Modified:**
+- src/kitkat/models.py (added DEXHealth, SystemHealth - ~60 lines)
+- src/kitkat/api/deps.py (added get_health_service singleton - ~35 lines)
+- src/kitkat/main.py (registered health router, adapter init, startup time - ~15 lines)
+
+### Validation Gates Passed
+
+✅ All 8 tasks marked complete with [x]
+✅ All 40 tests passing (17 unit + 23 integration)
+✅ No regressions in existing tests
+✅ All 5 acceptance criteria satisfied (AC#1-5)
+✅ Code follows established project patterns
+✅ Comprehensive logging integrated
+✅ File List includes all changed files
+✅ Status updated to "review" for code review phase
+
 ---
 
-**Ultimate context engine analysis completed - comprehensive developer guide created**
+**Story implementation complete - ready for code review phase**
 
