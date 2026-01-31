@@ -68,13 +68,13 @@ development_status:
   # Epic 3: Test Mode & Safe Onboarding
   epic-3: in-progress
   3-1-test-mode-feature-flag: done
-  3-2-mock-dex-adapter: review
+  3-2-mock-dex-adapter: done
   3-3-dry-run-execution-output: done
   epic-3-retrospective: optional
 
   # Epic 4: System Monitoring & Alerting
-  epic-4: backlog
-  4-1-health-service-dex-status: backlog
+  epic-4: in-progress
+  4-1-health-service-dex-status: ready-for-dev
   4-2-telegram-alert-service: backlog
   4-3-auto-recovery-after-outage: backlog
   4-4-error-logging-with-full-context: backlog
