@@ -540,3 +540,56 @@ class HealthResponse(BaseModel):
     timestamp: datetime = Field(
         ..., description="Health check timestamp (UTC timezone-aware ISO 8601 format)"
     )
+
+
+# ============================================================================
+# Dry-Run Execution Output Models (Story 3.3)
+# ============================================================================
+
+
+class WouldHaveExecuted(BaseModel):
+    """Details of what would have executed in test mode (Story 3.3: AC#2).
+
+    Represents a simulated execution from the MockAdapter in test mode,
+    showing what would have been sent to a real DEX if test mode were disabled.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    dex: str = Field(..., description="DEX identifier (e.g., 'mock')")
+    symbol: str = Field(..., description="Trading pair symbol")
+    side: Literal["buy", "sell"] = Field(..., description="Order direction")
+    size: Decimal = Field(..., description="Position size")
+    simulated_result: dict = Field(
+        ..., description="Simulated execution result from MockAdapter"
+    )
+    # Expected fields in simulated_result (Story 3.3: AC#2):
+    # - order_id: "mock-order-*" format or None if failed
+    # - status: "submitted" (success) or "failed" (error)
+    # - fill_price: filled amount as string for success, None for error
+    # - submitted_at: ISO format UTC timestamp
+    # - error_message: None for success, error details for failure (AC#3 - error consistency)
+
+
+class DryRunResponse(BaseModel):
+    """Response for webhook in test mode (Story 3.3: AC#1).
+
+    When test_mode=true, webhook endpoint returns DryRunResponse instead of
+    SignalProcessorResponse, showing what would have been executed without
+    actually submitting to any DEX.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    status: Literal["dry_run"] = Field(
+        default="dry_run", description="Always 'dry_run' in test mode"
+    )
+    signal_id: str = Field(..., description="Signal hash for correlation")
+    message: str = Field(
+        default="Test mode - no real trade executed",
+        description="Explanation message for test mode"
+    )
+    would_have_executed: list[WouldHaveExecuted] = Field(
+        ..., description="What would have executed for each configured DEX"
+    )
+    timestamp: datetime = Field(..., description="Response timestamp (UTC)")

@@ -2,8 +2,15 @@
 
 Implements DEXAdapter interface with minimal latency for fast testing
 and development without connecting to real DEX systems.
+
+Features:
+- Instant order submission with mock order IDs
+- Optional failure simulation via MOCK_FAIL_RATE for testing error paths
+- No real network calls or credentials required
+- Perfect for CI/CD and testing workflows
 """
 
+import random
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal, Optional
@@ -11,6 +18,8 @@ from typing import Literal, Optional
 import structlog
 
 from kitkat.adapters.base import DEXAdapter
+from kitkat.adapters.exceptions import DEXRejectionError
+from kitkat.config import get_settings
 from kitkat.models import (
     ConnectParams,
     HealthStatus,
@@ -68,7 +77,7 @@ class MockAdapter(DEXAdapter):
         side: Literal["buy", "sell"],
         size: Decimal,
     ) -> OrderSubmissionResult:
-        """Submit a mock order (always succeeds).
+        """Submit a mock order with optional failure simulation (AC#5).
 
         Args:
             symbol: Trading pair (e.g., "ETH/USD")
@@ -78,7 +87,25 @@ class MockAdapter(DEXAdapter):
         Returns:
             OrderSubmissionResult with mock order ID and no initial fill
             (fill amount comes from WebSocket updates, like real DEX behavior)
+
+        Raises:
+            DEXRejectionError: Simulated failure if MOCK_FAIL_RATE triggers
         """
+        # Check for simulated failure (AC#5 - optional)
+        settings = get_settings()
+        if settings.mock_fail_rate > 0:
+            random_val = random.randint(0, 100)
+            if random_val < settings.mock_fail_rate:
+                error_msg = f"Mock failure simulated (MOCK_FAIL_RATE={settings.mock_fail_rate}%)"
+                self._log.warning(
+                    "Mock order rejected (simulated failure)",
+                    symbol=symbol,
+                    side=side,
+                    size=str(size),
+                    error=error_msg,
+                )
+                raise DEXRejectionError(error_msg)
+
         self._order_counter += 1
         order_id = f"mock-order-{self._order_counter:06d}"
 

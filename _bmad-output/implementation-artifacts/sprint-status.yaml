@@ -68,8 +68,8 @@ development_status:
   # Epic 3: Test Mode & Safe Onboarding
   epic-3: in-progress
   3-1-test-mode-feature-flag: done
-  3-2-mock-dex-adapter: backlog
-  3-3-dry-run-execution-output: backlog
+  3-2-mock-dex-adapter: review
+  3-3-dry-run-execution-output: review
   epic-3-retrospective: optional
 
   # Epic 4: System Monitoring & Alerting

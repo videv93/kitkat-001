@@ -3,6 +3,8 @@
 This module orchestrates signal execution across all configured DEX adapters in parallel.
 Each signal is executed on all active (connected) adapters simultaneously, with results
 collected and logged individually.
+
+Story 3.3: Logs is_test_mode flag in execution result_data for filtering test executions.
 """
 
 import asyncio
@@ -13,6 +15,7 @@ from datetime import datetime, timezone
 import structlog
 
 from kitkat.adapters.base import DEXAdapter
+from kitkat.config import get_settings
 from kitkat.models import DEXExecutionResult, SignalPayload, SignalProcessorResponse
 from kitkat.services.execution_service import ExecutionService
 
@@ -215,6 +218,8 @@ class SignalProcessor:
         Converts exceptions from gather into error results and logs all
         outcomes to ExecutionService for audit trail.
 
+        Story 3.3: Adds is_test_mode flag to result_data for database filtering.
+
         Args:
             result: Result from _execute_on_adapter (DEXExecutionResult or Exception)
             signal_id: Signal hash for correlation
@@ -234,7 +239,10 @@ class SignalProcessor:
                 latency_ms=0,
             )
 
-        # Log to ExecutionService
+        # Story 3.3: Get test_mode flag for execution logging (AC#4)
+        settings = get_settings()
+
+        # Log to ExecutionService with is_test_mode flag (Story 3.3: AC#4)
         await self._execution_service.log_execution(
             signal_id=signal_id,
             dex_id=result.dex_id,
@@ -243,6 +251,7 @@ class SignalProcessor:
             result_data={
                 "filled_amount": str(result.filled_amount),
                 "error_message": result.error_message,
+                "is_test_mode": settings.test_mode,  # AC#4 - Add flag for filtering
             },
             latency_ms=result.latency_ms,
         )

@@ -3,7 +3,7 @@
 import hashlib
 from datetime import datetime, timezone
 from hmac import compare_digest
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from kitkat.api.deps import get_db_session, verify_webhook_token, get_signal_processor, check_shutdown
 from kitkat.config import get_settings
-from kitkat.models import Signal, SignalPayload, SignalProcessorResponse
+from kitkat.models import Signal, SignalPayload, SignalProcessorResponse, DryRunResponse, WouldHaveExecuted
 from kitkat.services import SignalDeduplicator
 from kitkat.services.signal_processor import SignalProcessor
 from kitkat.services.rate_limiter import RateLimiter
@@ -65,14 +65,14 @@ def generate_signal_hash(payload_json: str) -> str:
     return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
 
-@router.post("/webhook", response_model=SignalProcessorResponse, dependencies=[Depends(check_shutdown)])
+@router.post("/webhook", response_model=None, dependencies=[Depends(check_shutdown)])
 async def webhook_handler(
     request: Request,
     payload: SignalPayload,
     token: str = Depends(verify_webhook_token),
     db: AsyncSession = Depends(get_db_session),
     signal_processor: SignalProcessor = Depends(get_signal_processor),
-) -> SignalProcessorResponse | JSONResponse:
+) -> Union[DryRunResponse, SignalProcessorResponse, JSONResponse]:
     """Receive, validate, deduplicate, rate-limit, and process TradingView webhook signal.
 
     Validates payload structure and business rules. Detects duplicates within
@@ -117,7 +117,7 @@ async def webhook_handler(
         signal_processor: SignalProcessor dependency for parallel DEX execution
 
     Returns:
-        SignalProcessorResponse with per-DEX execution results and overall status,
+        DryRunResponse if test_mode=true (Story 3.3), otherwise SignalProcessorResponse with per-DEX execution results and overall status,
         or JSONResponse with 429 for rate limit exceeded
 
     Raises:
@@ -240,6 +240,7 @@ async def webhook_handler(
 
     # Story 2.9: Process signal through all active DEX adapters in parallel
     # Story 2.11: Track in-flight orders for graceful shutdown
+    # Story 3.3: Return DryRunResponse if test_mode=true
     # Returns per-DEX execution results and overall status
     try:
         if shutdown_manager:
@@ -249,11 +250,51 @@ async def webhook_handler(
             # Fallback for tests without shutdown manager
             response = await signal_processor.process_signal(payload, signal_id)
 
-        # TODO (Story 4.2): Trigger alerts on execution failures
-        # if response.overall_status == "failed":
-        #     await alert_service.send_alert(signal_id, response)
+        # Story 3.3: Check test_mode and return appropriate response format (AC#1, #2)
+        if settings.test_mode:
+            # Convert SignalProcessorResponse to DryRunResponse for test mode (AC#1, #2)
+            # Use single timestamp for consistency between submitted_at and response timestamp
+            response_time = datetime.now(timezone.utc)
 
-        return response
+            would_have = []
+            for result in response.results:
+                # Include all executions (success and error) - AC#3 requires error responses unchanged
+                would_have.append(WouldHaveExecuted(
+                    dex=result.dex_id,
+                    symbol=payload.symbol,
+                    side=payload.side,
+                    size=payload.size,
+                    simulated_result={
+                        "order_id": result.order_id,
+                        "status": "submitted" if result.status != "error" else "failed",
+                        "fill_price": str(result.filled_amount) if result.status != "error" else None,
+                        "submitted_at": response_time.isoformat(),
+                        "error_message": result.error_message,  # Include error details if present
+                    }
+                ))
+
+            # Log dry-run response (AC#2)
+            log = logger.bind(
+                signal_id=signal_id,
+                dex_id="mock",
+                status="dry_run",
+                executions_count=len(would_have),
+            )
+            log.info("webhook_dry_run_response")
+
+            # Return DryRunResponse instead of SignalProcessorResponse (AC#1)
+            return DryRunResponse(
+                signal_id=signal_id,
+                would_have_executed=would_have,
+                timestamp=response_time,
+            )
+        else:
+            # Production mode - return normal SignalProcessorResponse
+            # TODO (Story 4.2): Trigger alerts on execution failures
+            # if response.overall_status == "failed":
+            #     await alert_service.send_alert(signal_id, response)
+            return response
+
     except Exception as e:
         # Log execution service failure but return partial response
         log = logger.bind(

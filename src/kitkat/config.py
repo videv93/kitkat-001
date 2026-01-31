@@ -39,6 +39,12 @@ class Settings(BaseSettings):
 
     # Feature Flags
     test_mode: bool = False
+    mock_fail_rate: int = Field(
+        default=0,
+        ge=0,
+        le=100,
+        description="Mock adapter failure rate (0-100%) for testing error paths. Default: 0 (always succeed)",
+    )
 
     # Application host for URL generation (Story 2.4)
     app_host: str = "localhost:8000"
