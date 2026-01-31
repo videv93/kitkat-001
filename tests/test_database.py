@@ -89,12 +89,27 @@ class TestSignalModel:
 
     @pytest.mark.asyncio
     async def test_signal_indexes(self, test_db_session: AsyncSession):
-        """Test that indexes exist on signal_id and received_at."""
+        """Test that indexes exist on signal_id and received_at columns."""
+        # Get all indexes for the signals table
         result = await test_db_session.execute(text("PRAGMA index_list(signals)"))
-        index_names = {row[1] for row in result.fetchall()}
+        indexes = result.fetchall()
+        index_names = [row[1] for row in indexes]
 
-        # SQLAlchemy creates indexes automatically for indexed columns
+        # Verify we have indexes (at least unique constraint on signal_id creates one)
         assert len(index_names) > 0
+
+        # Check which columns are indexed by examining each index
+        indexed_columns = set()
+        for index_name in index_names:
+            index_info = await test_db_session.execute(
+                text(f"PRAGMA index_info('{index_name}')")
+            )
+            for col_info in index_info.fetchall():
+                indexed_columns.add(col_info[2])  # Column name is at index 2
+
+        # Verify signal_id and received_at are indexed
+        assert "signal_id" in indexed_columns, "signal_id should be indexed"
+        assert "received_at" in indexed_columns, "received_at should be indexed"
 
     @pytest.mark.asyncio
     async def test_signal_primary_key(self, test_db_session: AsyncSession):
@@ -147,31 +162,8 @@ class TestSignalCreationAndPersistence:
         retrieved_id = result.scalar()
         assert retrieved_id == "persist-test-001"
 
-    @pytest.mark.asyncio
-    async def test_signal_unique_constraint_violation(
-        self, test_db_session: AsyncSession
-    ):
-        """Test that duplicate signal_id raises constraint violation."""
-        signal1 = Signal(
-            signal_id="duplicate-test",
-            payload={"test": 1},
-            received_at=datetime.now(),
-            processed=False,
-        )
-        test_db_session.add(signal1)
-        await test_db_session.commit()
-
-        # Try to add duplicate
-        signal2 = Signal(
-            signal_id="duplicate-test",
-            payload={"test": 2},
-            received_at=datetime.now(),
-            processed=False,
-        )
-        test_db_session.add(signal2)
-
-        with pytest.raises(Exception):  # Should raise IntegrityError
-            await test_db_session.commit()
+    # Note: test_signal_unique_constraint_violation removed as duplicate of
+    # TestSignalModel.test_signal_id_unique_constraint - both test the same behavior
 
 
 class TestAsyncSessionManagement:
@@ -203,17 +195,24 @@ class TestConcurrentWrites:
 
     @pytest.mark.asyncio
     async def test_concurrent_writes_no_locking(self, test_db_session: AsyncSession):
-        """Test that concurrent writes don't fail with database locked errors."""
+        """Test that concurrent writes don't fail with database locked errors.
 
-        async def create_signal(session, index):
-            signal = Signal(
-                signal_id=f"concurrent-signal-{index}",
-                payload={"index": index},
-                received_at=datetime.now(),
-                processed=False,
-            )
-            session.add(signal)
-            await session.commit()
+        Uses separate sessions for each concurrent write to ensure actual overlap.
+        """
+
+        async def create_signal_with_new_session(session_factory, index):
+            """Create signal in its own session to ensure true concurrency."""
+            async with session_factory() as session:
+                signal = Signal(
+                    signal_id=f"concurrent-signal-{index}",
+                    payload={"index": index},
+                    received_at=datetime.now(),
+                    processed=False,
+                )
+                session.add(signal)
+                # Add small delay to increase overlap probability
+                await asyncio.sleep(0.01)
+                await session.commit()
 
         # Create multiple concurrent writes
         with TemporaryDirectory() as tmp_dir:
@@ -242,17 +241,19 @@ class TestConcurrentWrites:
             async with test_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
-            # Run concurrent writes
-            tasks = []
-            for i in range(5):
-                async with test_async_session() as session:
-                    tasks.append(create_signal(session, i))
+            # Run concurrent writes - each task creates its own session
+            tasks = [
+                create_signal_with_new_session(test_async_session, i)
+                for i in range(5)
+            ]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Verify no errors occurred
-            for result in results:
-                assert not isinstance(result, Exception)
+            for i, result in enumerate(results):
+                assert not isinstance(
+                    result, Exception
+                ), f"Task {i} failed: {result}"
 
             # Verify all writes succeeded
             async with test_async_session() as session:

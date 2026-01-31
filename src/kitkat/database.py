@@ -1,5 +1,6 @@
 """Database configuration and session management."""
 
+import threading
 from datetime import datetime, timezone
 from typing import List
 
@@ -10,6 +11,9 @@ from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
 logger = structlog.get_logger()
+
+# Thread-safe lock for lazy initialization of globals
+_init_lock = threading.Lock()
 
 
 class UtcDateTime(TypeDecorator):
@@ -87,51 +91,53 @@ def _create_engine():
 
 
 def get_engine():
-    """Get or create the database engine (lazy initialization)."""
+    """Get or create the database engine (lazy initialization).
+
+    Thread-safe using double-checked locking pattern.
+    """
     global _engine
     if _engine is None:
-        _engine = _create_engine()
+        with _init_lock:
+            # Double-check after acquiring lock
+            if _engine is None:
+                _engine = _create_engine()
     return _engine
 
 
 def get_async_session_factory():
-    """Get or create the async session factory (lazy initialization)."""
+    """Get or create the async session factory (lazy initialization).
+
+    Thread-safe using double-checked locking pattern.
+    """
     global _async_session
     if _async_session is None:
-        engine = get_engine()
-        _async_session = sessionmaker(
-            engine,
-            class_=AsyncSession,
-            expire_on_commit=False,
-            autocommit=False,
-            autoflush=False,
-        )
+        with _init_lock:
+            # Double-check after acquiring lock
+            if _async_session is None:
+                engine = get_engine()
+                _async_session = sessionmaker(
+                    engine,
+                    class_=AsyncSession,
+                    expire_on_commit=False,
+                    autocommit=False,
+                    autoflush=False,
+                )
     return _async_session
 
 
 async def get_db_session() -> AsyncSession:
     """Dependency function to provide async database session.
 
+    The async context manager handles session cleanup automatically.
+
     Yields:
         AsyncSession: Database session for the request.
     """
     factory = get_async_session_factory()
     async with factory() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+        yield session
 
 
-# Module-level accessors for backwards compatibility
-def engine():
-    """Get database engine."""
-    return get_engine()
-
-
-def async_session():
-    """Get async session factory."""
-    return get_async_session_factory()
 
 
 # ============================================================================
@@ -187,3 +193,40 @@ class SessionModel(Base):
 
     # Relationship
     user: Mapped["UserModel"] = relationship(back_populates="sessions")
+
+
+# ============================================================================
+# ORM Models for Execution Logging & Partial Fills (Story 2.8)
+# ============================================================================
+
+
+class ExecutionModel(Base):
+    """SQLAlchemy ORM model for executions table.
+
+    Tracks all order execution attempts for auditing and partial fill handling.
+    """
+
+    __tablename__ = "executions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    signal_id: Mapped[str] = mapped_column(
+        String(64), index=True, nullable=False
+    )  # SHA-256 hash from Signal, NOT foreign key (signals may be cleaned up)
+    dex_id: Mapped[str] = mapped_column(
+        String(50), index=True, nullable=False
+    )  # "extended", "mock", etc.
+    order_id: Mapped[str | None] = mapped_column(
+        String(255), index=True, nullable=True
+    )  # DEX-assigned, null on submission failure
+    status: Mapped[str] = mapped_column(
+        String(20), index=True, nullable=False
+    )  # "pending", "filled", "partial", "failed"
+    result_data: Mapped[str] = mapped_column(
+        Text, default="{}", nullable=False
+    )  # JSON with full DEX response, filled_size, remaining_size
+    latency_ms: Mapped[int | None] = mapped_column(
+        nullable=True
+    )  # Time from submission start to response
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, default=_utc_now, index=True, nullable=False
+    )

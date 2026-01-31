@@ -48,7 +48,27 @@ class SignalPayload(BaseModel):
 
 
 class Signal(Base):
-    """Signal model for storing webhook signals from TradingView."""
+    """SQLAlchemy model for storing TradingView webhook signals.
+
+    This model persists incoming signals from TradingView webhooks for deduplication,
+    auditing, and async processing. Each signal is uniquely identified by its
+    signal_id hash to prevent duplicate execution.
+
+    Attributes:
+        id: Auto-increment primary key.
+        signal_id: Unique hash (SHA-256 of payload) for deduplication. Indexed.
+        payload: Raw JSON payload from webhook. Expected structure:
+            {
+                "symbol": str,    # Trading pair (e.g., "BTCUSDT")
+                "side": str,      # "buy" or "sell"
+                "size": Decimal   # Position size (positive)
+            }
+        received_at: UTC timestamp when signal was received. Indexed for time queries.
+        processed: Whether signal has been processed by SignalProcessor.
+
+    Table: signals
+    Indexes: signal_id (unique), received_at
+    """
 
     __tablename__ = "signals"
 
@@ -353,3 +373,52 @@ class WebhookConfigResponse(BaseModel):
     tradingview_setup: TradingViewSetup = Field(
         ..., description="TradingView setup instructions"
     )
+
+
+# ============================================================================
+# Execution Logging & Partial Fills Models (Story 2.8)
+# ============================================================================
+
+
+class ExecutionCreate(BaseModel):
+    """Request model for creating an execution record."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    signal_id: str = Field(..., description="Signal hash for correlation")
+    dex_id: str = Field(..., description="DEX identifier")
+    order_id: str | None = Field(None, description="DEX-assigned order ID")
+    status: Literal["pending", "filled", "partial", "failed"] = Field(
+        ..., description="Execution status"
+    )
+    result_data: dict = Field(default_factory=dict, description="DEX response data")
+    latency_ms: int | None = Field(None, description="Execution latency in milliseconds")
+
+
+class Execution(BaseModel):
+    """Persisted execution record."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, from_attributes=True)
+
+    id: int
+    signal_id: str
+    dex_id: str
+    order_id: str | None
+    status: Literal["pending", "filled", "partial", "failed"]
+    result_data: dict
+    latency_ms: int | None
+    created_at: datetime
+
+
+class PartialFillAlert(BaseModel):
+    """Alert model for partial fill notifications."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    signal_id: str = Field(..., description="Signal hash")
+    dex_id: str = Field(..., description="DEX identifier")
+    order_id: str = Field(..., description="Order ID")
+    symbol: str = Field(..., description="Trading symbol")
+    filled_amount: Decimal = Field(..., ge=0, description="Amount filled")
+    remaining_amount: Decimal = Field(..., ge=0, description="Amount remaining")
+    timestamp: datetime = Field(..., description="Alert timestamp")

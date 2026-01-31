@@ -16,7 +16,7 @@ from kitkat.api.users import router as users_router
 from kitkat.api.wallet import router as wallet_router
 from kitkat.api.webhook import router as webhook_router
 from kitkat.config import get_settings
-from kitkat.database import Base, async_session, get_engine
+from kitkat.database import Base, get_async_session_factory, get_engine
 from kitkat.services import SignalDeduplicator
 from kitkat.services.rate_limiter import RateLimiter
 
@@ -37,18 +37,22 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.settings = settings
 
-    # Initialize database
-    engine = get_engine()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables created")
+    # Initialize database with error handling
+    try:
+        engine = get_engine()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables created")
 
-    # Verify WAL mode is enabled
-    factory = async_session()
-    async with factory() as session:
-        result = await session.execute(text("PRAGMA journal_mode"))
-        mode = result.scalar()
-        logger.info("Database journal mode enabled", mode=mode)
+        # Verify WAL mode is enabled
+        factory = get_async_session_factory()
+        async with factory() as session:
+            result = await session.execute(text("PRAGMA journal_mode"))
+            mode = result.scalar()
+            logger.info("Database journal mode enabled", mode=mode)
+    except Exception as e:
+        logger.error("Database initialization failed", error=str(e))
+        raise RuntimeError(f"Failed to initialize database: {e}") from e
 
     # Initialize signal deduplicator (Story 1.5)
     deduplicator = SignalDeduplicator(ttl_seconds=60)

@@ -59,9 +59,9 @@ development_status:
   2-5-extended-adapter-connection: done
   2-6-extended-adapter-order-execution: done
   2-7-retry-logic-with-exponential-backoff: review
-  2-8-execution-logging-partial-fills: backlog
-  2-9-signal-processor-fan-out: backlog
-  2-10-wallet-disconnect-revocation: backlog
+  2-8-execution-logging-partial-fills: done
+  2-9-signal-processor-fan-out: ready-for-dev
+  2-10-wallet-disconnect-revocation: ready-for-dev
   2-11-graceful-shutdown: backlog
   epic-2-retrospective: optional
 
