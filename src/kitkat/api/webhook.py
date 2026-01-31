@@ -1,7 +1,7 @@
 """Webhook endpoint for receiving TradingView signals."""
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from hmac import compare_digest
 from typing import Literal, Optional
 
@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kitkat.api.deps import get_db_session, verify_webhook_token, get_signal_processor
+from kitkat.api.deps import get_db_session, verify_webhook_token, get_signal_processor, check_shutdown
 from kitkat.config import get_settings
 from kitkat.models import Signal, SignalPayload, SignalProcessorResponse
 from kitkat.services import SignalDeduplicator
@@ -62,7 +62,7 @@ def generate_signal_hash(payload_json: str) -> str:
     return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
 
-@router.post("/webhook", response_model=SignalProcessorResponse)
+@router.post("/webhook", response_model=SignalProcessorResponse, dependencies=[Depends(check_shutdown)])
 async def webhook_handler(
     request: Request,
     payload: SignalPayload,
@@ -173,7 +173,7 @@ async def webhook_handler(
             successful_count=0,
             failed_count=0,
             total_latency_ms=0,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.utcnow(),
         )
 
     # Get rate limiter from app state (Story 1.6)
@@ -192,7 +192,11 @@ async def webhook_handler(
             user=log_user,
             user_id=user_id,
         )
-        log.warning("webhook_rate_limited", retry_after_seconds=retry_after)
+        log.warning(
+            "webhook_rate_limited",
+            retry_after_seconds=retry_after,
+            payload=payload_json,
+        )
 
         return JSONResponse(
             status_code=429,
@@ -228,6 +232,15 @@ async def webhook_handler(
     )
     log.info("webhook_signal_received")
 
+    # Get shutdown manager for in-flight tracking (Story 2.11)
+    shutdown_manager = getattr(request.app.state, "shutdown_manager", None)
+
     # Story 2.9: Process signal through all active DEX adapters in parallel
+    # Story 2.11: Track in-flight orders for graceful shutdown
     # Returns per-DEX execution results and overall status
-    return await signal_processor.process_signal(payload, signal_id)
+    if shutdown_manager:
+        async with shutdown_manager.track_in_flight(signal_id):
+            return await signal_processor.process_signal(payload, signal_id)
+    else:
+        # Fallback for tests without shutdown manager
+        return await signal_processor.process_signal(payload, signal_id)

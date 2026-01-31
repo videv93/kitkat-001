@@ -57,14 +57,15 @@ So that **only valid signals are processed and I get clear error messages for in
   - [x] 1.3: Implement field validators for `side` (Literal["buy", "sell"])
   - [x] 1.4: Implement field validators for `size` (Decimal, must be > 0)
   - [x] 1.5: Implement custom error messages per AC requirements
-  - [x] 1.6: Test Pydantic V2 model with pytest (unit tests) - 17 tests pass
+  - [x] 1.6: Create comprehensive unit tests for SignalPayload model (20 tests in test_signal_payload.py)
 
 - [x] Task 2: Update webhook endpoint to use SignalPayload validation (AC: 1, 2, 3, 4, 5)
   - [x] 2.1: Update `/api/webhook` route to parse body as `SignalPayload` (FastAPI auto-validates)
   - [x] 2.2: FastAPI returns 400 automatically on validation failure
   - [x] 2.3: Catch `RequestValidationError` and format response per AC
-  - [x] 2.4: Log raw payload on validation error via structlog with signal context
-  - [x] 2.5: Return 200 with signal_id only for valid payloads
+  - [x] 2.4: Log raw payload on validation error via structlog with signal context (AC5)
+  - [x] 2.5: Return 200 with signal_id for valid payloads
+  - [x] 2.6: Enhanced logging for all error scenarios (rate limit, duplicates, etc.)
 
 - [x] Task 3: Generate signal_id hash (AC: 1, 5)
   - [x] 3.1: Create hash function using SHA256(payload_json + timestamp_minute)
@@ -346,6 +347,16 @@ Story 1.4 comprehensive context created with:
 
 ### Completion Notes
 
+**✅ Story 1.4 Implementation Complete - Code Review Fixes Applied**
+
+**Code Review Fixes Applied:**
+1. ✅ Added 20 dedicated unit tests for SignalPayload model (tests/test_signal_payload.py)
+2. ✅ Enhanced error logging to include payload for rate limit errors (AC5 completeness)
+3. ✅ Fixed timezone inconsistency (consistent use of datetime.utcnow())
+4. ✅ Updated File List to accurately reflect scope and later story extensions
+5. ✅ Clarified test organization (unit tests vs integration tests)
+6. ✅ Documented endpoint scope evolution due to later stories
+
 **✅ Story 1.4 Implementation Complete**
 
 **Acceptance Criteria Status:**
@@ -407,19 +418,32 @@ Story 1.4 comprehensive context created with:
 ### File List
 
 **Created/Modified in Story 1.4:**
-- `src/kitkat/models.py` - Added `SignalPayload` Pydantic V2 model with validators (45 LOC)
-- `src/kitkat/api/webhook.py` - Updated handler to use SignalPayload, added signal_id generation (105 LOC)
-- `src/kitkat/main.py` - Added RequestValidationError exception handler (35 LOC)
+- `src/kitkat/models.py` - Added `SignalPayload` Pydantic V2 model with validators (48 LOC)
+- `src/kitkat/api/webhook.py` - Updated handler to use SignalPayload, added signal_id generation (243 LOC)
+- `src/kitkat/main.py` - Added RequestValidationError exception handler (57 LOC)
 - `tests/conftest.py` - Added setup_test_database fixture for test isolation
-- `tests/test_webhook.py` - Added 90 comprehensive tests across 7 test classes (800+ LOC)
-  - TestSignalPayloadModel: 17 tests
-  - TestValidPayloadIntegration: 6 tests
-  - TestMalformedJSONRejection: 4 tests
-  - TestMissingFieldsRejection: 8 tests
-  - TestInvalidBusinessValuesRejection: 12 tests
-  - TestErrorLogging: 3 tests
-  - TestEdgeCasesStory14: 5 tests
-  - Plus 35 updated/refactored pre-existing tests
+- `tests/test_webhook.py` - Added 90+ integration tests across 7 test classes (800+ LOC)
+  - TestWebhookEndpointBasics: validation and response format
+  - TestWebhookTokenAuthentication: token auth validation
+  - TestSignalPayloadModel: Pydantic model validation
+  - TestValidPayloadIntegration: successful webhook flow
+  - TestMalformedJSONRejection: malformed JSON handling
+  - TestMissingFieldsRejection: missing field validation
+  - TestInvalidBusinessValuesRejection: business rule validation
+  - TestErrorLogging: error logging validation
+  - TestEdgeCasesStory14: edge cases and unicode handling
+- `tests/test_signal_payload.py` - NEW: 20 dedicated unit tests for SignalPayload model (180+ LOC)
+  - Comprehensive validation of all Pydantic model rules
+  - Field validator testing (symbol, side, size)
+  - Error message validation
+  - Edge cases (empty strings, whitespace, unicode)
+  - Signal_id consistency testing for deduplication
+
+**Modified by Later Stories (Extended Scope):**
+- `src/kitkat/api/webhook.py` - Extended for Stories 1.5, 1.6, 2.4, 2.9, 2.11 (now 243 LOC vs 105 LOC originally)
+- `tests/integration/test_webhook_rate_limiting.py` - Story 1.6 tests
+- `tests/api/test_webhook_deduplication.py` - Story 1.5 tests
+- `tests/api/test_webhook_config.py` - Story 2.4 tests
 
 **Pre-existing (from Story 1.3):**
 - `src/kitkat/api/deps.py` - `verify_webhook_token()` ready to use
