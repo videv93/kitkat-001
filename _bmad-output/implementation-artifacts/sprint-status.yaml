@@ -69,7 +69,7 @@ development_status:
   epic-3: in-progress
   3-1-test-mode-feature-flag: done
   3-2-mock-dex-adapter: review
-  3-3-dry-run-execution-output: review
+  3-3-dry-run-execution-output: done
   epic-3-retrospective: optional
 
   # Epic 4: System Monitoring & Alerting
