@@ -47,6 +47,11 @@ class MockAdapter(DEXAdapter):
         """Return unique identifier for Mock DEX."""
         return "mock"
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if adapter is currently connected."""
+        return self._connected
+
     async def connect(self, params: Optional[ConnectParams] = None) -> None:
         """Connect to Mock DEX (no-op, always succeeds)."""
         self._connected = True

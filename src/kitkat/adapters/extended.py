@@ -107,6 +107,11 @@ class ExtendedAdapter(DEXAdapter):
         """Return unique identifier for Extended DEX."""
         return "extended"
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if adapter is currently connected."""
+        return self._connected
+
     async def connect(self, params: Optional[ConnectParams] = None) -> None:
         """Establish connection to Extended DEX.
 

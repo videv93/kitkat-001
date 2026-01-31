@@ -87,6 +87,15 @@ class DEXAdapter(ABC):
         WebSocket connections, and cleans up resources.
         """
 
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """Check if adapter is currently connected to the DEX.
+
+        Returns:
+            bool: True if connected and ready for orders, False otherwise
+        """
+
     @abstractmethod
     async def execute_order(
         self,

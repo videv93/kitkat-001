@@ -62,19 +62,20 @@ def generate_signal_hash(payload_json: str) -> str:
     return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
 
-@router.post("/webhook", response_model=WebhookResponse)
+@router.post("/webhook", response_model=SignalProcessorResponse)
 async def webhook_handler(
     request: Request,
     payload: SignalPayload,
     token: str = Depends(verify_webhook_token),
     db: AsyncSession = Depends(get_db_session),
-) -> WebhookResponse | JSONResponse:
-    """Receive, validate, deduplicate, and rate-limit TradingView webhook signal.
+    signal_processor: SignalProcessor = Depends(get_signal_processor),
+) -> SignalProcessorResponse | JSONResponse:
+    """Receive, validate, deduplicate, rate-limit, and process TradingView webhook signal.
 
     Validates payload structure and business rules. Detects duplicates within
     60-second window and rejects them idempotently. Rate limits to 10 signals
-    per minute per token. Only new, non-rate-limited signals are stored and
-    processed further.
+    per minute per token. New, non-rate-limited signals are stored and then
+    processed through SignalProcessor for parallel execution on all active DEX adapters.
 
     Story 1.4: Signal Payload Parsing & Validation
     - AC1: Valid payload returns signal_id
@@ -86,7 +87,7 @@ async def webhook_handler(
     - AC2: Duplicates within 60s detected and rejected
     - AC3: TTL cleanup prevents memory leaks
     - AC4: Memory safely bounded
-    - AC5: Idempotent 200 OK response for duplicates
+    - AC5: Idempotent response for duplicates
 
     Story 1.6: Rate Limiting
     - AC1: Up to 10 signals per minute accepted
@@ -102,17 +103,18 @@ async def webhook_handler(
 
     Story 2.9: Signal Processor & Fan-Out
     - AC1: Signal routed to active DEX adapters
-    - AC2: Parallel execution via asyncio.gather
-    - AC5: Per-DEX response format returned
+    - AC2: Parallel execution via asyncio.gather with 30s timeout
+    - AC5: Per-DEX response format returned with total_latency_ms
 
     Args:
         request: FastAPI request for accessing raw body if needed
         payload: Validated SignalPayload from Pydantic model
         token: Verified webhook token from X-Webhook-Token header or ?token query param
         db: AsyncSession for database operations
+        signal_processor: SignalProcessor dependency for parallel DEX execution
 
     Returns:
-        WebhookResponse with signal_id and status ("received" or "duplicate")
+        SignalProcessorResponse with per-DEX execution results and overall status,
         or JSONResponse with 429 for rate limit exceeded
 
     Raises:
@@ -152,6 +154,7 @@ async def webhook_handler(
 
     # Check for duplicates (Story 1.5, AC2, AC5)
     # Duplicates don't count toward rate limit (Story 1.6, AC5)
+    # Return idempotent "success" response for duplicates (already processed)
     if deduplicator and deduplicator.is_duplicate(signal_id):
         log = logger.bind(
             signal_id=signal_id,
@@ -161,10 +164,16 @@ async def webhook_handler(
             user_id=user_id,
         )
         log.info("webhook_duplicate_signal_rejected")
-        return WebhookResponse(
-            status="duplicate",
+        # Return success response - signal was already processed
+        return SignalProcessorResponse(
             signal_id=signal_id,
-            code="DUPLICATE_SIGNAL",
+            overall_status="success",
+            results=[],
+            total_dex_count=0,
+            successful_count=0,
+            failed_count=0,
+            total_latency_ms=0,
+            timestamp=datetime.now(timezone.utc),
         )
 
     # Get rate limiter from app state (Story 1.6)
@@ -209,7 +218,7 @@ async def webhook_handler(
     db.add(signal_record)
     await db.commit()
 
-    # Log successful reception
+    # Log signal received
     log = logger.bind(
         signal_id=signal_id,
         side=payload.side,
@@ -219,4 +228,6 @@ async def webhook_handler(
     )
     log.info("webhook_signal_received")
 
-    return WebhookResponse(status="received", signal_id=signal_id)
+    # Story 2.9: Process signal through all active DEX adapters in parallel
+    # Returns per-DEX execution results and overall status
+    return await signal_processor.process_signal(payload, signal_id)

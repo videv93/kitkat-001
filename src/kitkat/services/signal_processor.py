@@ -51,9 +51,9 @@ class SignalProcessor:
         """Return only adapters that are currently connected.
 
         Returns:
-            list[DEXAdapter]: Adapters with _connected == True
+            list[DEXAdapter]: Adapters that are currently connected
         """
-        return [adapter for adapter in self._adapters if adapter._connected]
+        return [adapter for adapter in self._adapters if adapter.is_connected]
 
     async def process_signal(
         self,
@@ -86,6 +86,7 @@ class SignalProcessor:
                 total_dex_count=0,
                 successful_count=0,
                 failed_count=0,
+                total_latency_ms=0,
                 timestamp=datetime.now(timezone.utc),
             )
 
@@ -95,9 +96,28 @@ class SignalProcessor:
             for adapter in active_adapters
         ]
 
-        # Execute in parallel with exception handling
+        # Execute in parallel with exception handling and timeout protection
+        # 30 second timeout per signal to prevent indefinite hangs
         start_time = time.perf_counter()
-        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            raw_results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            log.error("Signal processing timeout - some adapters did not complete in time")
+            total_latency = int((time.perf_counter() - start_time) * 1000)
+            return SignalProcessorResponse(
+                signal_id=signal_id,
+                overall_status="failed",
+                results=[],
+                total_dex_count=len(active_adapters),
+                successful_count=0,
+                failed_count=len(active_adapters),
+                total_latency_ms=total_latency,
+                timestamp=datetime.now(timezone.utc),
+            )
+
         total_latency = int((time.perf_counter() - start_time) * 1000)
 
         # Process results and log to ExecutionService
@@ -132,6 +152,7 @@ class SignalProcessor:
             total_dex_count=len(active_adapters),
             successful_count=successful,
             failed_count=failed,
+            total_latency_ms=total_latency,
             timestamp=datetime.now(timezone.utc),
         )
 
