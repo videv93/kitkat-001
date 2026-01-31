@@ -1023,6 +1023,38 @@ class TestClientErrorNoRetry:
         # Should have been called only once (no retry)
         assert connected_adapter._http_client.post.call_count == 1
 
+    @pytest.mark.asyncio
+    async def test_no_retry_on_not_connected_error(self, extended_adapter):
+        """Verify disconnected adapter raises DEXError without retry."""
+        # Adapter not connected - no HTTP client
+        assert not extended_adapter.is_connected
+
+        # Should raise DEXError immediately without retry attempts
+        with pytest.raises(DEXError, match="Not connected"):
+            await extended_adapter.execute_order(
+                "ETH-PERP", "buy", Decimal("1.0")
+            )
+
+
+class TestOrderSizeValidation:
+    """Tests for order size validation before submission."""
+
+    @pytest.mark.asyncio
+    async def test_reject_zero_size_order(self, connected_adapter):
+        """Verify orders with size=0 are rejected immediately."""
+        with pytest.raises(ValueError, match="must be positive"):
+            await connected_adapter.execute_order(
+                "ETH-PERP", "buy", Decimal("0")
+            )
+
+    @pytest.mark.asyncio
+    async def test_reject_negative_size_order(self, connected_adapter):
+        """Verify orders with negative size are rejected immediately."""
+        with pytest.raises(ValueError, match="must be positive"):
+            await connected_adapter.execute_order(
+                "ETH-PERP", "buy", Decimal("-1.5")
+            )
+
 
 class TestRetriesExhausted:
     """Tests for AC #4: Final error returned when all retries fail."""

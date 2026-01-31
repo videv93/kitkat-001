@@ -19,7 +19,6 @@ import httpx
 import structlog
 import websockets
 from tenacity import (
-    RetryError,
     before_sleep_log,
     retry,
     retry_if_exception_type,
@@ -407,7 +406,15 @@ class ExtendedAdapter(DEXAdapter):
             DEXRejectionError: Order rejected by DEX
             DEXInsufficientFundsError: Not enough margin/balance
         """
+        # Validate order size before attempting submission
+        # Must be positive - NaN, Infinity, or zero values should fail early
+        if not size or size <= 0:
+            raise ValueError(f"Order size must be positive, got: {size}")
+
         if not self._connected or not self._http_client:
+            # Use DEXError (not DEXConnectionError) to prevent retry on disconnected adapter.
+            # Tenacity decorator only retries DEXConnectionError and DEXTimeoutError.
+            # If adapter is not connected, retrying won't help - user must reconnect first.
             raise DEXError("Not connected to Extended DEX")
 
         log = self._log.bind(symbol=symbol, side=side, size=str(size))
