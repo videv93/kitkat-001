@@ -521,12 +521,22 @@ class SignalProcessorResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health status response including test mode flag."""
+    """Health status response including test mode flag.
+
+    Provides system health status and operational visibility into whether
+    test mode is enabled (Story 3.1: AC#5). Test mode status is reported for
+    operational monitoring and to help developers distinguish test vs production
+    environments during debugging.
+    """
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
     status: Literal["healthy", "degraded", "offline"] = Field(
-        ..., description="Overall health status"
+        default="healthy", description="Overall health status"
     )
-    test_mode: bool = Field(..., description="Whether test mode is enabled")
-    timestamp: datetime = Field(..., description="Health check timestamp")
+    test_mode: bool = Field(
+        default=False, description="Whether test mode is enabled (default: False)"
+    )
+    timestamp: datetime = Field(
+        ..., description="Health check timestamp (UTC timezone-aware ISO 8601 format)"
+    )

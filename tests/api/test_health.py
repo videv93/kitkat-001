@@ -24,10 +24,6 @@ class TestHealthEndpoint:
         os.environ["TEST_MODE"] = "true"
 
         try:
-            # Reset singleton to ensure fresh settings load
-            import kitkat.config
-            kitkat.config._settings_instance = None
-
             client = TestClient(app)
             response = client.get("/health")
 
@@ -39,8 +35,6 @@ class TestHealthEndpoint:
             assert "timestamp" in data
         finally:
             os.environ.pop("TEST_MODE", None)
-            import kitkat.config
-            kitkat.config._settings_instance = None
 
     def test_health_endpoint_returns_test_mode_false(self):
         """Test that health endpoint returns test_mode=false when disabled.
@@ -51,10 +45,6 @@ class TestHealthEndpoint:
         old_value = os.environ.pop("TEST_MODE", None)
 
         try:
-            # Reset singleton to ensure fresh settings load
-            import kitkat.config
-            kitkat.config._settings_instance = None
-
             client = TestClient(app)
             response = client.get("/health")
 
@@ -67,8 +57,6 @@ class TestHealthEndpoint:
         finally:
             if old_value:
                 os.environ["TEST_MODE"] = old_value
-            import kitkat.config
-            kitkat.config._settings_instance = None
 
     def test_health_endpoint_response_format(self):
         """Test that health endpoint response has correct format and all fields.

@@ -2,10 +2,10 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 
 import structlog
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -16,7 +16,7 @@ from kitkat.api.sessions import router as sessions_router
 from kitkat.api.users import router as users_router
 from kitkat.api.wallet import router as wallet_router
 from kitkat.api.webhook import router as webhook_router
-from kitkat.config import Settings, get_settings
+from kitkat.config import get_settings
 from kitkat.database import Base, get_async_session_factory, get_engine
 from kitkat.models import HealthResponse
 from kitkat.services import SignalDeduplicator, ShutdownManager
@@ -230,8 +230,9 @@ async def health_check() -> HealthResponse:
         HealthResponse: Health status with test_mode flag
     """
     settings = get_settings()
+    logger.debug("Health check called", test_mode=settings.test_mode)
     return HealthResponse(
         status="healthy",
         test_mode=settings.test_mode,
-        timestamp=datetime.now(),
+        timestamp=datetime.now(timezone.utc),
     )
