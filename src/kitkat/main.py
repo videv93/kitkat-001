@@ -13,6 +13,7 @@ from sqlalchemy import text
 from kitkat.api.auth import router as auth_router
 from kitkat.api.config import router as config_router
 from kitkat.api.executions import router as executions_router
+from kitkat.api.health import router as health_router
 from kitkat.api.sessions import router as sessions_router
 from kitkat.api.users import router as users_router
 from kitkat.api.wallet import router as wallet_router
@@ -44,6 +45,9 @@ async def lifespan(app: FastAPI):
     # Startup
     settings = get_settings()
     app.state.settings = settings
+
+    # Record startup time for uptime calculation (Story 4.1)
+    app.state.startup_time = datetime.now(timezone.utc)
 
     # Initialize database with comprehensive error handling
     engine = None
@@ -94,6 +98,18 @@ async def lifespan(app: FastAPI):
     # Initialize signature verifier (Story 2.3)
     signature_verifier = get_signature_verifier()
     logger.info("Signature verifier initialized")
+
+    # Initialize adapters for health service and signal processor (Story 4.1)
+    from kitkat.adapters.extended import ExtendedAdapter
+    from kitkat.adapters.mock import MockAdapter
+
+    if settings.test_mode:
+        adapters = [MockAdapter()]
+    else:
+        adapters = [ExtendedAdapter(settings)]
+
+    app.state.adapters = adapters
+    logger.info("Adapters initialized", count=len(adapters), test_mode=settings.test_mode)
 
     # Log test mode status on startup (Story 3.1)
     if settings.test_mode:
@@ -148,6 +164,7 @@ app = FastAPI(
 )
 
 # Mount routers
+app.include_router(health_router)  # Story 4.1: Health check endpoint (unauthenticated)
 app.include_router(webhook_router)
 app.include_router(users_router)
 app.include_router(sessions_router)

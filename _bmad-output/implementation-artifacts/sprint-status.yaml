@@ -74,7 +74,7 @@ development_status:
 
   # Epic 4: System Monitoring & Alerting
   epic-4: in-progress
-  4-1-health-service-dex-status: ready-for-dev
+  4-1-health-service-dex-status: in-progress
   4-2-telegram-alert-service: backlog
   4-3-auto-recovery-after-outage: backlog
   4-4-error-logging-with-full-context: backlog

@@ -593,3 +593,45 @@ class DryRunResponse(BaseModel):
         ..., description="What would have executed for each configured DEX"
     )
     timestamp: datetime = Field(..., description="Response timestamp (UTC)")
+
+
+class DEXHealth(BaseModel):
+    """Health status of a single DEX adapter (Story 4.1: AC#3).
+
+    Represents the current health snapshot of one DEX adapter, including
+    connection status, latency, and recent error count.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    dex_id: str = Field(..., description="DEX identifier (e.g., 'extended', 'mock')")
+    status: Literal["healthy", "degraded", "offline"] = Field(
+        ..., description="Current health status"
+    )
+    latency_ms: Optional[int] = Field(
+        None, description="Last measured response time in milliseconds", ge=0
+    )
+    last_successful: Optional[datetime] = Field(
+        None, description="Timestamp of last successful operation (UTC)"
+    )
+    error_count: int = Field(
+        default=0, description="Number of errors in last 5 minutes", ge=0
+    )
+
+
+class SystemHealth(BaseModel):
+    """Overall system health aggregating all components (Story 4.1: AC#2).
+
+    Provides comprehensive health status across all configured DEX adapters,
+    with per-DEX details and overall system status determination.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    status: Literal["healthy", "degraded", "offline"] = Field(
+        ..., description="Overall system status"
+    )
+    components: dict[str, DEXHealth] = Field(
+        ..., description="Per-DEX health status"
+    )
+    timestamp: datetime = Field(..., description="Status snapshot timestamp (UTC)")

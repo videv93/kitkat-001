@@ -15,6 +15,7 @@ from kitkat.models import CurrentUser
 from kitkat.services.session_service import SessionService
 from kitkat.services.signal_processor import SignalProcessor
 from kitkat.services.execution_service import ExecutionService
+from kitkat.services.health import HealthService
 
 logger = structlog.get_logger()
 
@@ -23,6 +24,12 @@ get_db = get_db_session
 
 # Thread-safe lock for lazy initialization of SignalProcessor singleton
 _signal_processor_lock = threading.Lock()
+
+# Thread-safe lock for lazy initialization of HealthService singleton
+_health_service_lock = threading.Lock()
+
+# Singleton instances
+_health_service: Optional[HealthService] = None
 
 
 class SessionExpiredError(ValueError):
@@ -218,4 +225,40 @@ async def get_signal_processor(
     return _signal_processor
 
 
-__all__ = ["get_db_session", "get_db", "check_shutdown", "verify_webhook_token", "get_current_user", "get_signal_processor"]
+async def get_health_service(
+    request: Request,
+) -> HealthService:
+    """Get or create HealthService with configured adapters.
+
+    Story 4.1: Dependency injection for HealthService with lazy initialization.
+    Health service is created once with all configured adapters, then reused
+    for all health checks.
+
+    Thread-safe using double-checked locking pattern to prevent race conditions
+    during concurrent first-request initialization.
+
+    Args:
+        request: FastAPI request object to access app.state for adapters
+
+    Returns:
+        HealthService: Initialized service with all configured adapters
+
+    Note:
+        Adapters are passed from request.app.state.adapters, which are set
+        in main.py lifespan context during application startup.
+    """
+    global _health_service
+
+    # Double-checked locking: first check without lock for performance
+    if _health_service is None:
+        with _health_service_lock:
+            # Second check after acquiring lock to prevent duplicate initialization
+            if _health_service is None:
+                # Get adapters from app state (set in main.py lifespan)
+                adapters = getattr(request.app.state, "adapters", [])
+                _health_service = HealthService(adapters=adapters)
+
+    return _health_service
+
+
+__all__ = ["get_db_session", "get_db", "check_shutdown", "verify_webhook_token", "get_current_user", "get_signal_processor", "get_health_service"]
