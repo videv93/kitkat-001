@@ -1,6 +1,6 @@
 # Story 2.7: Retry Logic with Exponential Backoff
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
