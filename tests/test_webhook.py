@@ -967,3 +967,128 @@ class TestEdgeCasesStory14:
         payload = {"symbol": None, "side": "buy", "size": 1}
         response = client.post("/api/webhook", json=payload, headers=valid_headers)
         assert response.status_code == 400
+
+
+# =============================================================================
+# Story 2.4: Webhook URL Generation - Token-Based Authentication Tests
+# =============================================================================
+
+
+class TestWebhookTokenAuthentication:
+    """Tests for webhook token-based authentication (Story 2.4: AC3, AC4)."""
+
+    @pytest.mark.asyncio
+    async def test_webhook_with_invalid_token_query_parameter(self, client):
+        """Test POST /api/webhook?token=invalid_token returns 401 (Story 2.4: AC4)."""
+        payload = {
+            "symbol": "ETH-PERP",
+            "side": "buy",
+            "size": 0.5,
+        }
+        # Use invalid token query parameter
+        response = client.post(
+            "/api/webhook?token=invalid_token_12345",
+            json=payload,
+        )
+
+        # Should reject with 401 for invalid token
+        assert response.status_code == 401
+        data = response.json()
+        assert data["error"] == "Invalid token"
+        assert data["code"] == "INVALID_TOKEN"
+
+    @pytest.mark.asyncio
+    async def test_webhook_with_missing_token_returns_401(self, client):
+        """Test POST /api/webhook (no token at all) returns 401 (Story 2.4: AC4)."""
+        payload = {
+            "symbol": "ETH-PERP",
+            "side": "buy",
+            "size": 0.5,
+        }
+        # No token parameter, no header
+        response = client.post("/api/webhook", json=payload)
+
+        # Should reject with 401 for missing token
+        assert response.status_code == 401
+        data = response.json()
+        assert data["error"] == "Invalid token"
+        assert data["code"] == "INVALID_TOKEN"
+
+    @pytest.mark.asyncio
+    async def test_webhook_empty_token_query_parameter_rejected(self, client):
+        """Test POST /api/webhook?token= (empty token) returns 401."""
+        payload = {
+            "symbol": "ETH-PERP",
+            "side": "buy",
+            "size": 0.5,
+        }
+        # Empty token parameter
+        response = client.post(
+            "/api/webhook?token=",
+            json=payload,
+        )
+
+        # Should reject because token is empty
+        assert response.status_code == 401
+        data = response.json()
+        assert data["code"] == "INVALID_TOKEN"
+
+    @pytest.mark.asyncio
+    async def test_webhook_token_parameter_takes_precedence_over_header(
+        self, client, valid_webhook_token
+    ):
+        """Test that query parameter token is used even if header token provided.
+
+        When both ?token= and X-Webhook-Token header provided,
+        query parameter should be used (and validated against user tokens).
+        """
+        payload = {
+            "symbol": "ETH-PERP",
+            "side": "buy",
+            "size": 0.5,
+        }
+
+        # Provide both header and query parameter (query param should win)
+        # Use system token in header, invalid user token in query
+        response = client.post(
+            "/api/webhook?token=some_user_token",
+            json=payload,
+            headers={"X-Webhook-Token": valid_webhook_token},
+        )
+
+        # Should use the query parameter and reject it
+        assert response.status_code == 401
+        data = response.json()
+        assert data["code"] == "INVALID_TOKEN"
+
+    @pytest.mark.asyncio
+    async def test_webhook_token_isolation_different_tokens(self, client):
+        """Test that different tokens don't interfere with each other.
+
+        Even though we can't create actual user tokens in tests,
+        verify that the endpoint properly rejects non-system tokens.
+        """
+        payload = {
+            "symbol": "ETH-PERP",
+            "side": "buy",
+            "size": 0.5,
+        }
+
+        # Try multiple different invalid tokens - all should be rejected
+        invalid_tokens = [
+            "token_user_1",
+            "token_user_2",
+            "token_user_3",
+            "completely_different_token",
+        ]
+
+        for token in invalid_tokens:
+            response = client.post(
+                f"/api/webhook?token={token}",
+                json=payload,
+            )
+
+            # All should be rejected with 401
+            assert response.status_code == 401
+            data = response.json()
+            assert data["code"] == "INVALID_TOKEN"

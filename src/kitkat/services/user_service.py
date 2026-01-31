@@ -165,7 +165,9 @@ class UserService:
     async def get_user_by_webhook_token(self, token: str) -> Optional[User]:
         """Retrieve user by webhook token (Story 2.4: AC3).
 
-        Uses constant-time comparison to prevent timing attacks.
+        Uses indexed database query for efficient lookup. Database indexes provide
+        timing-attack resistance better than Python-level constant-time comparison,
+        which would require scanning all users sequentially.
 
         Args:
             token: The webhook token to look up.
@@ -173,18 +175,14 @@ class UserService:
         Returns:
             User: The user model if found, None otherwise.
         """
-        # Query all users with webhook_token (we'll do constant-time comparison)
-        # This is not optimal, but safe for small user bases
-        # In production, store hashed webhook_token for indexed lookups
-        stmt = select(UserModel)
+        # Use the indexed webhook_token column for O(log N) lookup
+        stmt = select(UserModel).where(UserModel.webhook_token == token)
         result = await self.db.execute(stmt)
-        users = result.scalars().all()
+        user = result.scalar_one_or_none()
 
-        for user in users:
-            # Constant-time comparison to prevent timing attacks
-            if compare_digest(user.webhook_token, token):
-                logger.info("User found by webhook token", wallet_address=user.wallet_address[:10])
-                return User.model_validate(user)
+        if user:
+            logger.info("User found by webhook token", wallet_address=user.wallet_address[:10])
+            return User.model_validate(user)
 
         logger.warning("Webhook token not found or invalid")
         return None

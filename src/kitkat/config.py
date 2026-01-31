@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +53,37 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = ""
+
+    @field_validator("app_host", mode="before")
+    @classmethod
+    def validate_app_host(cls, v: str) -> str:
+        """Validate app_host configuration (Story 2.4).
+
+        Args:
+            v: The app_host value to validate
+
+        Returns:
+            str: The validated app_host
+
+        Raises:
+            ValueError: If app_host format is invalid
+        """
+        if not v:
+            raise ValueError("app_host cannot be empty")
+
+        # Allow formats like:
+        # - localhost:8000
+        # - 127.0.0.1:8000
+        # - example.com
+        # - api.example.com:3000
+        # Don't allow full URLs (those belong in X-Forwarded-Host header)
+        if v.startswith(("http://", "https://")):
+            raise ValueError(
+                "app_host should be a domain/host only (e.g., 'example.com' or 'localhost:8000'), "
+                "not a full URL. Use X-Forwarded-Host header for reverse proxy scenarios."
+            )
+
+        return v
 
     def __init__(self, **data):
         """Initialize settings with computed defaults."""

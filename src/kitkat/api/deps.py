@@ -87,11 +87,8 @@ async def verify_webhook_token(
     # Try query parameter first (Story 2.4: AC3)
     if token_query:
         # Query parameter is a user-specific webhook token
-        # Validate it using UserService (will do constant-time comparison)
-        # For now, just check that it's non-empty
-        # The actual user lookup happens in webhook_handler
-        if token_query:
-            return token_query
+        # The actual user lookup and validation happens in webhook_handler
+        return token_query
 
     # Fall back to header-based authentication (legacy)
     token = request.headers.get("X-Webhook-Token")

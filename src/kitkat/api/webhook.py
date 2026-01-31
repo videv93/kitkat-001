@@ -21,6 +21,9 @@ from kitkat.services.user_service import UserService
 
 logger = structlog.get_logger()
 
+# Display length for wallet addresses in logs
+WALLET_ADDRESS_DISPLAY_LENGTH = 10
+
 # Router for webhook endpoints
 router = APIRouter(prefix="/api", tags=["webhook"])
 
@@ -138,7 +141,7 @@ async def webhook_handler(
                 detail={"error": "Invalid token", "code": "INVALID_TOKEN"},
             )
         user_id = user.id
-        log_user = user.wallet_address[:10]
+        log_user = user.wallet_address[:WALLET_ADDRESS_DISPLAY_LENGTH]
     else:
         log_user = "system"
 

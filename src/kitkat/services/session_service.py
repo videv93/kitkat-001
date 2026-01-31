@@ -97,11 +97,22 @@ class SessionService:
         user_result = await self.db.execute(user_stmt)
         user = user_result.scalar_one_or_none()
 
+        # Session found but user missing is a critical error - should not happen
+        if not user:
+            logger.error(
+                "Session found but user not found - data consistency error",
+                wallet_address=session.wallet_address,
+                session_id=session.id
+            )
+            raise ValueError(
+                f"User not found for valid session (wallet: {session.wallet_address})"
+            )
+
         logger.info("Session validated, last_used updated")
         return CurrentUser(
             wallet_address=session.wallet_address,
             session_id=session.id,
-            webhook_token=user.webhook_token if user else "",
+            webhook_token=user.webhook_token,
         )
 
     async def cleanup_expired_sessions(self) -> int:
