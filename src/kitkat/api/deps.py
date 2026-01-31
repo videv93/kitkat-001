@@ -1,9 +1,11 @@
 """FastAPI dependency injection utilities."""
 
+import threading
 from datetime import datetime
 from hmac import compare_digest
 from typing import Optional
 
+import structlog
 from fastapi import Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +16,25 @@ from kitkat.services.session_service import SessionService
 from kitkat.services.signal_processor import SignalProcessor
 from kitkat.services.execution_service import ExecutionService
 
+logger = structlog.get_logger()
+
 # Alias for get_db_session for backwards compatibility
 get_db = get_db_session
+
+# Thread-safe lock for lazy initialization of SignalProcessor singleton
+_signal_processor_lock = threading.Lock()
+
+
+class SessionExpiredError(ValueError):
+    """Session token has expired."""
+
+    pass
+
+
+class InvalidTokenError(ValueError):
+    """Token format is invalid or missing."""
+
+    pass
 
 
 async def check_shutdown(request: Request) -> None:
@@ -124,16 +143,13 @@ async def get_current_user(
     session_service = SessionService(db)
     try:
         return await session_service.validate_session(token)
+    except SessionExpiredError:
+        raise HTTPException(status_code=401, detail="Session expired")
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or missing token")
     except ValueError as e:
-        # Standardize error message (don't leak internal details)
-        error_msg = str(e)
-        if "expired" in error_msg.lower():
-            detail = "Session expired"
-        elif "required" in error_msg.lower():
-            detail = "Invalid or missing token"
-        else:
-            detail = "Invalid or expired session"
-        raise HTTPException(status_code=401, detail=detail)
+        logger.warning("Unexpected session validation error", error=str(e))
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
 
 
 # Global SignalProcessor instance (singleton pattern)
@@ -148,6 +164,9 @@ async def get_signal_processor(
     Story 2.9: Dependency injection for SignalProcessor with lazy initialization.
     Adapters are created and connected once, then reused for all signals.
 
+    Thread-safe using double-checked locking pattern to prevent race conditions
+    during concurrent first-request initialization.
+
     Args:
         db: Database session for ExecutionService
 
@@ -161,41 +180,43 @@ async def get_signal_processor(
     """
     global _signal_processor
 
+    # Double-checked locking: first check without lock for performance
     if _signal_processor is None:
-        from kitkat.adapters.extended import ExtendedAdapter
-        from kitkat.adapters.mock import MockAdapter
+        with _signal_processor_lock:
+            # Second check after acquiring lock to prevent duplicate initialization
+            if _signal_processor is None:
+                from kitkat.adapters.extended import ExtendedAdapter
+                from kitkat.adapters.mock import MockAdapter
 
-        settings = get_settings()
+                settings = get_settings()
 
-        # Select adapters based on test mode
-        if settings.test_mode:
-            adapters = [MockAdapter()]
-        else:
-            adapters = [ExtendedAdapter(settings)]
+                # Select adapters based on test mode
+                if settings.test_mode:
+                    adapters = [MockAdapter()]
+                else:
+                    adapters = [ExtendedAdapter(settings)]
 
-        # Connect all adapters - log but don't fail on connection errors
-        # This allows the system to continue even if a DEX is temporarily unavailable
-        connected_adapters = []
-        for adapter in adapters:
-            try:
-                await adapter.connect()
-                connected_adapters.append(adapter)
-            except Exception as e:
-                # Log error but continue - adapter will be inactive
-                import structlog
-                log = structlog.get_logger()
-                log.warning(
-                    "Failed to connect adapter",
-                    adapter=adapter.dex_id,
-                    error=str(e),
+                # Connect all adapters - log but don't fail on connection errors
+                # This allows the system to continue even if a DEX is temporarily unavailable
+                connected_adapters = []
+                for adapter in adapters:
+                    try:
+                        await adapter.connect()
+                        connected_adapters.append(adapter)
+                    except Exception as e:
+                        # Log error but continue - adapter will be inactive
+                        logger.warning(
+                            "Failed to connect adapter",
+                            adapter=adapter.dex_id,
+                            error=str(e),
+                        )
+                        # Still add adapter to list - it will be filtered by get_active_adapters()
+
+                execution_service = ExecutionService(db)
+                _signal_processor = SignalProcessor(
+                    adapters=adapters if adapters else [MockAdapter()],
+                    execution_service=execution_service,
                 )
-                # Still add adapter to list - it will be filtered by get_active_adapters()
-
-        execution_service = ExecutionService(db)
-        _signal_processor = SignalProcessor(
-            adapters=adapters if adapters else [MockAdapter()],
-            execution_service=execution_service,
-        )
 
     return _signal_processor
 

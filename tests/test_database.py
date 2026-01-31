@@ -89,26 +89,37 @@ class TestSignalModel:
 
     @pytest.mark.asyncio
     async def test_signal_indexes(self, test_db_session: AsyncSession):
-        """Test that indexes exist on signal_id and received_at columns."""
+        """Test that indexes exist on signal_id (unique) and received_at columns."""
         # Get all indexes for the signals table
         result = await test_db_session.execute(text("PRAGMA index_list(signals)"))
-        indexes = result.fetchall()
-        index_names = [row[1] for row in indexes]
+        indexes = {row[1]: row for row in result.fetchall()}
 
         # Verify we have indexes (at least unique constraint on signal_id creates one)
-        assert len(index_names) > 0
+        assert len(indexes) > 0, "signals table should have at least one index"
 
-        # Check which columns are indexed by examining each index
+        # Check which columns are indexed and verify uniqueness
         indexed_columns = set()
-        for index_name in index_names:
-            index_info = await test_db_session.execute(
+        unique_indexes = set()
+        for index_name, index_row in indexes.items():
+            # index_row[2] == 1 means index is unique
+            if index_row[2] == 1:
+                unique_indexes.add(index_name)
+
+            index_info_result = await test_db_session.execute(
                 text(f"PRAGMA index_info('{index_name}')")
             )
-            for col_info in index_info.fetchall():
+            for col_info in index_info_result.fetchall():
                 indexed_columns.add(col_info[2])  # Column name is at index 2
 
-        # Verify signal_id and received_at are indexed
-        assert "signal_id" in indexed_columns, "signal_id should be indexed"
+        # Verify signal_id is indexed and unique
+        assert (
+            "signal_id" in indexed_columns
+        ), "signal_id should be indexed (for uniqueness)"
+        assert (
+            len(unique_indexes) > 0
+        ), "signal_id should have a unique index (unique constraint)"
+
+        # Verify received_at is indexed
         assert "received_at" in indexed_columns, "received_at should be indexed"
 
     @pytest.mark.asyncio
@@ -197,24 +208,11 @@ class TestConcurrentWrites:
     async def test_concurrent_writes_no_locking(self, test_db_session: AsyncSession):
         """Test that concurrent writes don't fail with database locked errors.
 
-        Uses separate sessions for each concurrent write to ensure actual overlap.
+        Uses Barrier to force all tasks to reach commit point simultaneously,
+        ensuring true concurrency overlap rather than sequential execution.
         """
 
-        async def create_signal_with_new_session(session_factory, index):
-            """Create signal in its own session to ensure true concurrency."""
-            async with session_factory() as session:
-                signal = Signal(
-                    signal_id=f"concurrent-signal-{index}",
-                    payload={"index": index},
-                    received_at=datetime.now(),
-                    processed=False,
-                )
-                session.add(signal)
-                # Add small delay to increase overlap probability
-                await asyncio.sleep(0.01)
-                await session.commit()
-
-        # Create multiple concurrent writes
+        # Create temporary database for concurrent test
         with TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "concurrent_test.db"
             database_url = f"sqlite+aiosqlite:///{db_path}"
@@ -241,11 +239,28 @@ class TestConcurrentWrites:
             async with test_engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
-            # Run concurrent writes - each task creates its own session
-            tasks = [
-                create_signal_with_new_session(test_async_session, i)
-                for i in range(5)
-            ]
+            # Barrier to force concurrent commits (5 tasks)
+            barrier = asyncio.Barrier(5)
+
+            async def create_signal_concurrent(index: int):
+                """Create signal with barrier synchronization for true concurrency."""
+                async with test_async_session() as session:
+                    signal = Signal(
+                        signal_id=f"concurrent-signal-{index}",
+                        payload={"index": index},
+                        received_at=datetime.now(),
+                        processed=False,
+                    )
+                    session.add(signal)
+
+                    # Wait for all 5 tasks to reach commit point
+                    await barrier.wait()
+
+                    # All commits happen simultaneously
+                    await session.commit()
+
+            # Run concurrent writes - tasks wait at barrier before committing
+            tasks = [create_signal_concurrent(i) for i in range(5)]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
 

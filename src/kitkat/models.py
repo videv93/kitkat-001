@@ -6,10 +6,10 @@ from decimal import Decimal
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from kitkat.database import Base
+from kitkat.database import Base, UtcDateTime
 
 
 class SignalPayload(BaseModel):
@@ -54,16 +54,23 @@ class Signal(Base):
     auditing, and async processing. Each signal is uniquely identified by its
     signal_id hash to prevent duplicate execution.
 
+    Payload Structure (Story 1.4 - Signal Payload Parsing & Validation):
+        The payload field stores the raw JSON from the webhook. Expected structure:
+        {
+            "symbol": str,      # Trading pair (e.g., "BTCUSDT") - required
+            "side": str,        # "buy" or "sell" - required
+            "size": Decimal     # Position size (must be positive) - required
+        }
+
+        Use SignalPayload Pydantic model to validate payload structure:
+            from kitkat.models import SignalPayload
+            validated = SignalPayload(**signal.payload)  # Validates and raises ValueError if invalid
+
     Attributes:
         id: Auto-increment primary key.
         signal_id: Unique hash (SHA-256 of payload) for deduplication. Indexed.
-        payload: Raw JSON payload from webhook. Expected structure:
-            {
-                "symbol": str,    # Trading pair (e.g., "BTCUSDT")
-                "side": str,      # "buy" or "sell"
-                "size": Decimal   # Position size (positive)
-            }
-        received_at: UTC timestamp when signal was received. Indexed for time queries.
+        payload: Raw JSON payload from webhook (dict with required fields).
+        received_at: UTC timestamp when signal was received (timezone-aware). Indexed for time queries.
         processed: Whether signal has been processed by SignalProcessor.
 
     Table: signals
@@ -77,8 +84,19 @@ class Signal(Base):
         String(64), unique=True, index=True, nullable=False
     )
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
-    received_at: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(UtcDateTime, index=True, nullable=False)
     processed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    def validate_payload(self) -> "SignalPayload":
+        """Validate and parse payload using SignalPayload schema.
+
+        Returns:
+            SignalPayload: Validated payload model.
+
+        Raises:
+            ValueError: If payload structure is invalid or required fields are missing.
+        """
+        return SignalPayload(**self.payload)
 
 
 # ============================================================================

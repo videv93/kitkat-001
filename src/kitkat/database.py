@@ -67,10 +67,21 @@ def _create_engine():
       - Prevents race conditions through unique constraint enforcement
       - IntegrityError raised on constraint violation during commit
       - Applications must catch IntegrityError for duplicate key handling
+
+    Raises:
+        ValueError: If database_url is not configured or has invalid format.
     """
     from kitkat.config import get_settings
 
     settings = get_settings()
+
+    # Validate database URL configuration
+    if not settings.database_url:
+        raise ValueError("database_url not configured in settings")
+    if not settings.database_url.startswith("sqlite+aiosqlite://"):
+        raise ValueError(
+            f"Invalid database URL format: expected sqlite+aiosqlite://, got {settings.database_url}"
+        )
 
     engine = create_async_engine(
         settings.database_url,
@@ -129,13 +140,18 @@ async def get_db_session() -> AsyncSession:
     """Dependency function to provide async database session.
 
     The async context manager handles session cleanup automatically.
+    Logs any exceptions that occur during endpoint execution for debugging.
 
     Yields:
         AsyncSession: Database session for the request.
     """
     factory = get_async_session_factory()
     async with factory() as session:
-        yield session
+        try:
+            yield session
+        except Exception as e:
+            logger.exception("Session error during endpoint execution", error=str(e))
+            raise
 
 
 
