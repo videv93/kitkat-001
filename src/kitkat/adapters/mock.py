@@ -76,7 +76,8 @@ class MockAdapter(DEXAdapter):
             size: Amount to trade (must be positive)
 
         Returns:
-            OrderSubmissionResult with mock order ID
+            OrderSubmissionResult with mock order ID and no initial fill
+            (fill amount comes from WebSocket updates, like real DEX behavior)
         """
         self._order_counter += 1
         order_id = f"mock-order-{self._order_counter:06d}"
@@ -93,10 +94,10 @@ class MockAdapter(DEXAdapter):
             order_id=order_id,
             status="submitted",
             submitted_at=datetime.now(timezone.utc),
-            filled_amount=size,  # Mock assumes instant fill
+            filled_amount=Decimal("0"),  # No fill yet - will come from WebSocket updates
             dex_response={
                 "order_id": order_id,
-                "status": "filled",
+                "status": "submitted",
                 "symbol": symbol,
                 "side": side,
                 "size": str(size),

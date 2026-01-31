@@ -58,7 +58,7 @@ class MockDEXAdapter(DEXAdapter):
             order_id=f"{self.dex_id}-order-123",
             status="submitted",
             submitted_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
-            filled_amount=size,
+            filled_amount=Decimal("0"),  # No fill yet - comes from WebSocket updates
             dex_response={"status": "ok"},
         )
 

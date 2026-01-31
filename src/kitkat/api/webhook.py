@@ -158,6 +158,7 @@ async def webhook_handler(
     # Check for duplicates (Story 1.5, AC2, AC5)
     # Duplicates don't count toward rate limit (Story 1.6, AC5)
     # Return idempotent response for duplicates per AC5
+    # Return SignalProcessorResponse with empty results (already processed)
     if deduplicator is not None and deduplicator.is_duplicate(signal_id):
         log = logger.bind(
             signal_id=signal_id,
@@ -167,12 +168,15 @@ async def webhook_handler(
             user_id=user_id,
         )
         log.info("webhook_duplicate_signal_detected")
-        # Return idempotent response for duplicate per AC5
-        # Use WebhookResponse model for consistency with AC spec
-        return WebhookResponse(
-            status="duplicate",
+        # Return idempotent response: signal was already processed
+        return SignalProcessorResponse(
             signal_id=signal_id,
-            code="DUPLICATE_SIGNAL",
+            overall_status="success",  # Idempotent - already processed
+            results=[],
+            total_dex_count=0,
+            successful_count=0,
+            failed_count=0,
+            timestamp=datetime.now(timezone.utc),
         )
 
     # Get rate limiter from app state (Story 1.6)
@@ -204,7 +208,7 @@ async def webhook_handler(
                 "code": "RATE_LIMITED",
                 "signal_id": signal_id,
                 "dex": None,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
             headers={"Retry-After": str(retry_after)},
         )
@@ -216,7 +220,7 @@ async def webhook_handler(
     signal_record = Signal(
         signal_id=signal_id,
         payload=payload_dict,
-        received_at=datetime.utcnow(),
+        received_at=datetime.now(timezone.utc),
     )
     db.add(signal_record)
     await db.commit()
@@ -237,9 +241,36 @@ async def webhook_handler(
     # Story 2.9: Process signal through all active DEX adapters in parallel
     # Story 2.11: Track in-flight orders for graceful shutdown
     # Returns per-DEX execution results and overall status
-    if shutdown_manager:
-        async with shutdown_manager.track_in_flight(signal_id):
-            return await signal_processor.process_signal(payload, signal_id)
-    else:
-        # Fallback for tests without shutdown manager
-        return await signal_processor.process_signal(payload, signal_id)
+    try:
+        if shutdown_manager:
+            async with shutdown_manager.track_in_flight(signal_id):
+                response = await signal_processor.process_signal(payload, signal_id)
+        else:
+            # Fallback for tests without shutdown manager
+            response = await signal_processor.process_signal(payload, signal_id)
+
+        # TODO (Story 4.2): Trigger alerts on execution failures
+        # if response.overall_status == "failed":
+        #     await alert_service.send_alert(signal_id, response)
+
+        return response
+    except Exception as e:
+        # Log execution service failure but return partial response
+        log = logger.bind(
+            signal_id=signal_id,
+            side=payload.side,
+            symbol=payload.symbol,
+            user=log_user,
+            user_id=user_id,
+        )
+        log.error("Signal processing failed", error=str(e))
+        # Return failed response with context for debugging
+        return SignalProcessorResponse(
+            signal_id=signal_id,
+            overall_status="failed",
+            results=[],
+            total_dex_count=0,
+            successful_count=0,
+            failed_count=0,
+            timestamp=datetime.now(timezone.utc),
+        )

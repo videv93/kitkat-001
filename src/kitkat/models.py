@@ -512,5 +512,4 @@ class SignalProcessorResponse(BaseModel):
     total_dex_count: int = Field(..., description="Total DEXs attempted")
     successful_count: int = Field(..., description="DEXs that executed successfully")
     failed_count: int = Field(..., description="DEXs that failed")
-    total_latency_ms: int = Field(..., ge=0, description="Total end-to-end processing latency in milliseconds")
     timestamp: datetime = Field(..., description="When processing completed")

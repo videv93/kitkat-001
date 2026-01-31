@@ -86,7 +86,6 @@ class SignalProcessor:
                 total_dex_count=0,
                 successful_count=0,
                 failed_count=0,
-                total_latency_ms=0,
                 timestamp=datetime.now(timezone.utc),
             )
 
@@ -106,7 +105,6 @@ class SignalProcessor:
             )
         except asyncio.TimeoutError:
             log.error("Signal processing timeout - some adapters did not complete in time")
-            total_latency = int((time.perf_counter() - start_time) * 1000)
             return SignalProcessorResponse(
                 signal_id=signal_id,
                 overall_status="failed",
@@ -114,11 +112,8 @@ class SignalProcessor:
                 total_dex_count=len(active_adapters),
                 successful_count=0,
                 failed_count=len(active_adapters),
-                total_latency_ms=total_latency,
                 timestamp=datetime.now(timezone.utc),
             )
-
-        total_latency = int((time.perf_counter() - start_time) * 1000)
 
         # Process results and log to ExecutionService
         processed_results = []
@@ -142,7 +137,6 @@ class SignalProcessor:
             overall_status=overall_status,
             successful=successful,
             failed=failed,
-            latency_ms=total_latency,
         )
 
         return SignalProcessorResponse(
@@ -152,7 +146,6 @@ class SignalProcessor:
             total_dex_count=len(active_adapters),
             successful_count=successful,
             failed_count=failed,
-            total_latency_ms=total_latency,
             timestamp=datetime.now(timezone.utc),
         )
 
@@ -192,7 +185,7 @@ class SignalProcessor:
 
             return DEXExecutionResult(
                 dex_id=adapter.dex_id,
-                status="filled",
+                status="filled",  # Order successfully submitted; fill status updated via WebSocket (Story 2.8)
                 order_id=result.order_id,
                 filled_amount=result.filled_amount,
                 error_message=None,

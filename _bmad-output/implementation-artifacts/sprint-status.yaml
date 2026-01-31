@@ -60,7 +60,7 @@ development_status:
   2-6-extended-adapter-order-execution: done
   2-7-retry-logic-with-exponential-backoff: done
   2-8-execution-logging-partial-fills: done
-  2-9-signal-processor-fan-out: review
+  2-9-signal-processor-fan-out: done
   2-10-wallet-disconnect-revocation: done
   2-11-graceful-shutdown: done
   epic-2-retrospective: optional

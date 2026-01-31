@@ -195,23 +195,23 @@ async def get_signal_processor(
 
                 # Connect all adapters - log but don't fail on connection errors
                 # This allows the system to continue even if a DEX is temporarily unavailable
+                # Only include successfully connected adapters
                 connected_adapters = []
                 for adapter in adapters:
                     try:
                         await adapter.connect()
                         connected_adapters.append(adapter)
                     except Exception as e:
-                        # Log error but continue - adapter will be inactive
+                        # Log error but continue - don't include failed adapters
                         logger.warning(
                             "Failed to connect adapter",
                             adapter=adapter.dex_id,
                             error=str(e),
                         )
-                        # Still add adapter to list - it will be filtered by get_active_adapters()
 
                 execution_service = ExecutionService(db)
                 _signal_processor = SignalProcessor(
-                    adapters=adapters if adapters else [MockAdapter()],
+                    adapters=connected_adapters if connected_adapters else [MockAdapter()],
                     execution_service=execution_service,
                 )
 
