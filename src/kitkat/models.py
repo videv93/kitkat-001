@@ -332,6 +332,39 @@ class VerifyResponse(BaseModel):
     wallet_address: str = Field(..., description="Verified wallet address")
 
 
+class DisconnectResponse(BaseModel):
+    """Response for wallet disconnect endpoint (Story 2.10).
+
+    Disconnects the current session only. Other concurrent sessions (if any)
+    remain active. Webhook token is NOT invalidated - webhooks will continue
+    to execute if properly configured. To fully disable all access, use revoke.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wallet_address: str = Field(..., description="Wallet address (abbreviated)")
+    message: str = Field(..., description="Confirmation message")
+    timestamp: datetime = Field(..., description="When disconnect occurred")
+
+
+class RevokeResponse(BaseModel):
+    """Response for wallet revocation endpoint (Story 2.10).
+
+    Complete revocation of all wallet delegation and sessions. All active
+    sessions are invalidated immediately. Webhook token is NOT invalidated
+    as it operates in a separate security domain. Users must explicitly
+    regenerate webhook token if needed.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wallet_address: str = Field(..., description="Wallet address (abbreviated)")
+    sessions_deleted: int = Field(..., description="Number of sessions invalidated")
+    delegation_revoked: bool = Field(..., description="Whether DEX delegation was revoked")
+    message: str = Field(..., description="Confirmation message")
+    timestamp: datetime = Field(..., description="When revocation occurred")
+
+
 # ============================================================================
 # Webhook Configuration Models (Story 2.4)
 # ============================================================================

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from kitkat.api.deps import get_current_user
@@ -19,28 +20,18 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-class UserStatusResponse:
-    """Response model for user status endpoint."""
+class UserStatusResponse(BaseModel):
+    """Response model for user status endpoint (Story 2.3 AC5)."""
 
-    def __init__(self, wallet_address: str, status: str, abbreviated_address: str):
-        self.wallet_address = wallet_address
-        self.status = status
-        self.abbreviated_address = abbreviated_address
-
-    def model_dump(self):
-        """Convert to dictionary for JSON response."""
-        return {
-            "wallet_address": self.abbreviated_address,
-            "full_address": self.wallet_address,
-            "status": self.status,
-        }
+    wallet_address: str = Field(..., description="Wallet address (abbreviated format)")
+    status: str = Field(default="Connected", description="Connection status")
 
 
-@router.get("/user/status")
+@router.get("/user/status", response_model=UserStatusResponse)
 async def get_user_status(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
-) -> dict:
+) -> UserStatusResponse:
     """Get authenticated user's wallet connection status.
 
     AC5: When authenticated user queries their status:
@@ -75,14 +66,12 @@ async def get_user_status(
             },
         )
 
-    # Abbreviate address: 0x1234...5678
-    full_address = current_user.wallet_address
-    abbreviated = f"{full_address[:6]}...{full_address[-4:]}"
+    # Abbreviate address: 0x1234...5678 (AC5: Show abbreviated format only)
+    abbreviated = f"{current_user.wallet_address[:6]}...{current_user.wallet_address[-4:]}"
 
     log.info("User status retrieved")
 
-    return {
-        "wallet_address": abbreviated,
-        "full_address": full_address,
-        "status": "Connected",
-    }
+    return UserStatusResponse(
+        wallet_address=abbreviated,
+        status="Connected",
+    )

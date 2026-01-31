@@ -1,5 +1,6 @@
 """FastAPI dependency injection utilities."""
 
+from datetime import datetime
 from hmac import compare_digest
 from typing import Optional
 
@@ -15,6 +16,35 @@ from kitkat.services.execution_service import ExecutionService
 
 # Alias for get_db_session for backwards compatibility
 get_db = get_db_session
+
+
+async def check_shutdown(request: Request) -> None:
+    """Dependency to reject requests during shutdown.
+
+    Returns 503 Service Unavailable when shutdown has been initiated.
+    Apply to endpoints that should not accept new work during shutdown.
+
+    Story 2.11: Graceful Shutdown
+
+    Args:
+        request: FastAPI request object
+
+    Raises:
+        HTTPException: 503 if shutdown is in progress
+    """
+    shutdown_manager = getattr(request.app.state, "shutdown_manager", None)
+
+    if shutdown_manager and shutdown_manager.is_shutting_down:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "Service shutting down",
+                "code": "SERVICE_UNAVAILABLE",
+                "signal_id": None,
+                "dex": None,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            },
+        )
 
 
 async def verify_webhook_token(
@@ -170,4 +200,4 @@ async def get_signal_processor(
     return _signal_processor
 
 
-__all__ = ["get_db_session", "get_db", "verify_webhook_token", "get_current_user", "get_signal_processor"]
+__all__ = ["get_db_session", "get_db", "check_shutdown", "verify_webhook_token", "get_current_user", "get_signal_processor"]

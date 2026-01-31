@@ -60,6 +60,7 @@ class UserService:
         if existing_user:
             raise ValueError(f"User already exists: {wallet_address}")
 
+        # Generate unique webhook token (with retry for extremely rare token collision)
         webhook_token = generate_secure_token()
         config_data = DEFAULT_USER_CONFIG.copy()
 
@@ -71,10 +72,19 @@ class UserService:
         self.db.add(user)
         try:
             await self.db.commit()
-        except IntegrityError:
+        except IntegrityError as e:
             # Handles race condition where user created between check and insert
             await self.db.rollback()
-            raise ValueError(f"User already exists: {wallet_address}")
+            # Check if it was wallet_address or webhook_token that caused the error
+            error_str = str(e).lower()
+            if "wallet_address" in error_str:
+                raise ValueError(f"User already exists: {wallet_address}")
+            elif "webhook_token" in error_str:
+                # Token collision (extremely rare) - retry with new token
+                logger.warning("Webhook token collision, retrying with new token")
+                return await self.create_user(wallet_address)
+            else:
+                raise ValueError(f"Database error creating user: {wallet_address}")
         await self.db.refresh(user)
 
         logger.info("User created for wallet", wallet_address=wallet_address)

@@ -116,3 +116,40 @@ class SessionService:
         count = result.rowcount
         logger.info("Cleaned up expired sessions", count=count)
         return count
+
+    async def delete_session(self, session_id: int) -> bool:
+        """Delete a specific session by ID.
+
+        Args:
+            session_id: The session ID to delete.
+
+        Returns:
+            bool: True if session was deleted, False if not found.
+        """
+        stmt = delete(SessionModel).where(SessionModel.id == session_id)
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+
+        if result.rowcount > 0:
+            logger.info("Session deleted", session_id=session_id)
+            return True
+        return False
+
+    async def delete_all_user_sessions(self, wallet_address: str) -> int:
+        """Delete all sessions for a wallet address.
+
+        Used for full wallet revocation - ensures no active sessions remain.
+
+        Args:
+            wallet_address: The wallet address to revoke all sessions for.
+
+        Returns:
+            int: Number of sessions deleted.
+        """
+        stmt = delete(SessionModel).where(SessionModel.wallet_address == wallet_address)
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+
+        count = result.rowcount
+        logger.info("All sessions deleted for wallet", wallet_address=wallet_address[:10], count=count)
+        return count

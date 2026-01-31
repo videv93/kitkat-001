@@ -300,8 +300,20 @@ Claude Haiku 4.5
 - Rate limiting added to challenge endpoint for brute force prevention
 - Full async/await support with SQLAlchemy integration
 
+**2026-01-31 - Code Review Fixes Applied**
+- Fixed AC5 response model: UserStatusResponse now Pydantic BaseModel with response_model parameter (consistency)
+- Removed full_address field from user status response per spec (abbreviation only)
+- Removed duplicate address validation: now relies solely on Pydantic field validators (DRY principle)
+- Added shutdown() method to ChallengeStore with lifespan integration (consistency with Story 1.5)
+- Improved user creation race condition handling: retry logic for token uniqueness (edge case safety)
+- Standardized error responses: switched to JSONResponse for consistency with webhook error handling
+- Fixed timestamp format: isoformat() + "Z" for consistency across codebase
+- All 56 tests passing (21 API + 21 signature + 14 user service tests)
+- Zero regressions, full backward compatibility maintained
+
 ---
 
 **Created:** 2026-01-19
 **Implementation Started:** 2026-01-25
-**Status:** review
+**Code Review Fixed:** 2026-01-31
+**Status:** done

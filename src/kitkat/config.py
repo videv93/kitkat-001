@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +42,14 @@ class Settings(BaseSettings):
 
     # Application host for URL generation (Story 2.4)
     app_host: str = "localhost:8000"
+
+    # Graceful shutdown (Story 2.11)
+    shutdown_grace_period_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Grace period in seconds to wait for in-flight orders during shutdown (min: 5, max: 300)",
+    )
 
     # Database
     database_url: str = ""

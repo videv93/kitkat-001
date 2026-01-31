@@ -68,7 +68,8 @@ class ChallengeStore:
         Returns:
             Formatted message string.
         """
-        timestamp = expires_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Use consistent ISO format like other code (isoformat() + "Z")
+        timestamp = expires_at.isoformat() + "Z" if expires_at.tzinfo else expires_at.isoformat() + "Z"
         return (
             f"Sign this message to authenticate with kitkat-001:\n\n"
             f"Wallet: {wallet_address}\n"
@@ -122,6 +123,14 @@ class ChallengeStore:
         ]
         for nonce in expired:
             del self._challenges[nonce]
+
+    def shutdown(self) -> None:
+        """Clean shutdown of the challenge store.
+
+        Called during application shutdown to explicitly clear all state.
+        """
+        self._challenges.clear()
+        self._challenges = {}
 
 
 class SignatureVerifier:

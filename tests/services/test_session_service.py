@@ -247,3 +247,107 @@ async def test_concurrent_session_creation(db_session):
     tokens = [s.token for s in sessions]
     assert len(tokens) == len(set(tokens))
     assert all(s.wallet_address == wallet for s in sessions)
+
+
+@pytest.mark.asyncio
+async def test_delete_session_existing(db_session):
+    """Test deleting an existing session."""
+    user_service = UserService(db_session)
+    wallet = "0x1234567890abcdef1234567890abcdef12345678"
+    await user_service.create_user(wallet)
+
+    service = SessionService(db_session)
+    session = await service.create_session(wallet)
+
+    # Delete the session
+    deleted = await service.delete_session(session.id)
+    assert deleted is True
+
+    # Verify session is gone
+    from sqlalchemy import select
+
+    from kitkat.database import SessionModel
+
+    stmt = select(SessionModel).where(SessionModel.id == session.id)
+    result = await db_session.execute(stmt)
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_delete_session_not_found(db_session):
+    """Test deleting a non-existent session."""
+    service = SessionService(db_session)
+    deleted = await service.delete_session(99999)
+    assert deleted is False
+
+
+@pytest.mark.asyncio
+async def test_delete_all_user_sessions(db_session):
+    """Test deleting all sessions for a wallet."""
+    user_service = UserService(db_session)
+    wallet = "0x1234567890abcdef1234567890abcdef12345678"
+    await user_service.create_user(wallet)
+
+    service = SessionService(db_session)
+    # Create multiple sessions
+    session1 = await service.create_session(wallet)
+    session2 = await service.create_session(wallet)
+    session3 = await service.create_session(wallet)
+
+    # Delete all sessions for wallet
+    count = await service.delete_all_user_sessions(wallet)
+    assert count == 3
+
+    # Verify all sessions are gone
+    from sqlalchemy import select
+
+    from kitkat.database import SessionModel
+
+    stmt = select(SessionModel).where(SessionModel.wallet_address == wallet)
+    result = await db_session.execute(stmt)
+    assert result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_delete_all_user_sessions_no_sessions(db_session):
+    """Test deleting all sessions when none exist."""
+    service = SessionService(db_session)
+    wallet = "0xnonexistent1111111111111111111111111111"
+
+    count = await service.delete_all_user_sessions(wallet)
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_all_user_sessions_multiple_users(db_session):
+    """Test that delete_all_user_sessions only deletes for target wallet."""
+    user_service = UserService(db_session)
+    wallet1 = "0x1111111111111111111111111111111111111111"
+    wallet2 = "0x2222222222222222222222222222222222222222"
+    await user_service.create_user(wallet1)
+    await user_service.create_user(wallet2)
+
+    service = SessionService(db_session)
+    # Create sessions for both wallets
+    session1a = await service.create_session(wallet1)
+    session1b = await service.create_session(wallet1)
+    session2a = await service.create_session(wallet2)
+
+    # Delete sessions for wallet1 only
+    count = await service.delete_all_user_sessions(wallet1)
+    assert count == 2
+
+    # Verify wallet1 sessions are gone, wallet2 sessions remain
+    from sqlalchemy import select
+
+    from kitkat.database import SessionModel
+
+    stmt = select(SessionModel).where(SessionModel.wallet_address == wallet1)
+    result = await db_session.execute(stmt)
+    assert result.scalars().all() == []
+
+    stmt = select(SessionModel).where(SessionModel.wallet_address == wallet2)
+    result = await db_session.execute(stmt)
+    sessions = result.scalars().all()
+    assert len(sessions) == 1
+    assert sessions[0].id == session2a.id

@@ -47,14 +47,14 @@ development_status:
   1-3-webhook-endpoint-with-authentication: done
   1-4-signal-payload-parsing-validation: done
   1-5-signal-deduplication: done
-  1-6-rate-limiting: review
+  1-6-rate-limiting: done
   epic-1-retrospective: optional
 
   # Epic 2: Extended DEX Integration & Order Execution
   epic-2: in-progress
   2-1-dex-adapter-interface: done
   2-2-user-session-management: done
-  2-3-wallet-connection-signature: review
+  2-3-wallet-connection-signature: done
   2-4-webhook-url-generation: review
   2-5-extended-adapter-connection: done
   2-6-extended-adapter-order-execution: done

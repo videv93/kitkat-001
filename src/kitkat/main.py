@@ -20,6 +20,7 @@ from kitkat.config import get_settings
 from kitkat.database import Base, get_async_session_factory, get_engine
 from kitkat.services import SignalDeduplicator, ShutdownManager
 from kitkat.services.rate_limiter import RateLimiter
+from kitkat.services.signature_verifier import get_signature_verifier
 
 logger = structlog.get_logger()
 
@@ -29,12 +30,14 @@ deduplicator: SignalDeduplicator | None = None
 rate_limiter: RateLimiter | None = None
 # Global shutdown manager singleton - initialized in lifespan
 shutdown_manager: ShutdownManager | None = None
+# Global signature verifier singleton - initialized in lifespan
+signature_verifier = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup/shutdown."""
-    global deduplicator, rate_limiter, shutdown_manager
+    global deduplicator, rate_limiter, shutdown_manager, signature_verifier
 
     # Startup
     settings = get_settings()
@@ -86,6 +89,10 @@ async def lifespan(app: FastAPI):
     app.state.shutdown_manager = shutdown_manager
     logger.info("Shutdown manager initialized", grace_period=settings.shutdown_grace_period_seconds)
 
+    # Initialize signature verifier (Story 2.3)
+    signature_verifier = get_signature_verifier()
+    logger.info("Signature verifier initialized")
+
     yield
 
     # Shutdown sequence (Story 2.11)
@@ -116,9 +123,13 @@ async def lifespan(app: FastAPI):
     if deduplicator is not None:
         deduplicator.shutdown()
         logger.info("Signal deduplicator shut down")
+    if signature_verifier is not None:
+        signature_verifier._challenge_store.shutdown()
+        logger.info("Signature verifier challenge store shut down")
     deduplicator = None
     rate_limiter = None
     shutdown_manager = None
+    signature_verifier = None
     await engine.dispose()
     logger.info("Database engine disposed")
 
