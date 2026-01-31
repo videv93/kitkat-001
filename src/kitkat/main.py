@@ -69,6 +69,7 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(f"Failed to initialize database: {e}") from e
 
     # Initialize signal deduplicator (Story 1.5)
+    # Store in app.state instead of global to avoid race conditions during shutdown
     deduplicator = SignalDeduplicator(ttl_seconds=60)
     app.state.deduplicator = deduplicator
     logger.info("Signal deduplicator initialized", ttl_seconds=60)
@@ -112,6 +113,9 @@ async def lifespan(app: FastAPI):
             logger.warning("Adapter disconnect failed", dex_id=adapter.dex_id, error=str(e))
 
     # Cleanup other resources
+    if deduplicator is not None:
+        deduplicator.shutdown()
+        logger.info("Signal deduplicator shut down")
     deduplicator = None
     rate_limiter = None
     shutdown_manager = None

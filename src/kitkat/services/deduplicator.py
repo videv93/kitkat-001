@@ -80,3 +80,11 @@ class SignalDeduplicator:
             for signal_id, timestamp in self._seen.items()
             if (now - timestamp) < self._ttl
         }
+
+    def shutdown(self) -> None:
+        """Clean shutdown of the deduplicator service.
+
+        Called during application shutdown to explicitly clear all state.
+        """
+        self._seen.clear()
+        self._seen = {}

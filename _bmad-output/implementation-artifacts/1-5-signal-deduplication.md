@@ -57,11 +57,11 @@ So that **the same trade is not executed multiple times**.
   - [x] 1.6: Initialize deduplicator as singleton in FastAPI lifespan
 
 - [x] Task 2: Integrate deduplicator into webhook handler (AC: 1, 2, 5)
-  - [x] 2.1: Import `SignalDeduplicator` singleton into webhook handler
+  - [x] 2.1: Import `SignalDeduplicator` from app state in webhook handler
   - [x] 2.2: Check for duplicates AFTER validation, BEFORE Signal Processor
-  - [x] 2.3: Return 200 with `{"status": "duplicate"}` for duplicates (idempotent)
-  - [x] 2.4: Return 200 with `{"status": "received"}` for first-time signals
-  - [x] 2.5: Update structlog context to include duplicate detection
+  - [x] 2.3: Return 200 with `WebhookResponse` status="duplicate", code="DUPLICATE_SIGNAL" (idempotent, AC5)
+  - [x] 2.4: New signals continue to Signal Processor (return SignalProcessorResponse)
+  - [x] 2.5: Update structlog context to include duplicate detection logging
 
 - [x] Task 3: Implement signal hash reuse from Story 1.4 (AC: 1)
   - [x] 3.1: Verify `generate_signal_hash()` function is available from Story 1.4
@@ -431,6 +431,16 @@ Story 1.5 comprehensive context created with:
 - Integration with existing webhook handler
 
 ### Completion Notes
+
+**✅ Story 1.5 Implementation Complete - Code Review Fixes Applied**
+
+**Code Review Fixes Applied:**
+1. ✅ Fixed response model for duplicates - Changed from SignalProcessorResponse to WebhookResponse with status="duplicate", code="DUPLICATE_SIGNAL"
+2. ✅ Fixed timezone deprecation - Changed datetime.utcnow() to datetime.now(timezone.utc) in generate_signal_hash()
+3. ✅ Fixed global variable race condition - Removed race condition in shutdown sequence by adding explicit deduplicator.shutdown() method
+4. ✅ Added explicit cleanup method - SignalDeduplicator.shutdown() called during app shutdown for clean teardown
+5. ✅ Fixed defensive null check - Changed `if deduplicator and` to `if deduplicator is not None and` for clarity
+6. ✅ Updated task documentation - Clarified webhook response model and integration flow
 
 **✅ Story 1.5 Implementation Complete**
 

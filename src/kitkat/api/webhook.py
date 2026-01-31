@@ -55,8 +55,8 @@ def generate_signal_hash(payload_json: str) -> str:
     Returns:
         Truncated SHA256 hex hash (16 characters)
     """
-    now = datetime.utcnow()
-    timestamp_minute = now.replace(second=0, microsecond=0).isoformat()
+    now = datetime.now(timezone.utc)
+    timestamp_minute = now.replace(second=0, microsecond=0, tzinfo=None).isoformat()
 
     hash_input = f"{payload_json}:{timestamp_minute}"
     return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
@@ -154,8 +154,8 @@ async def webhook_handler(
 
     # Check for duplicates (Story 1.5, AC2, AC5)
     # Duplicates don't count toward rate limit (Story 1.6, AC5)
-    # Return idempotent "success" response for duplicates (already processed)
-    if deduplicator and deduplicator.is_duplicate(signal_id):
+    # Return idempotent response for duplicates per AC5
+    if deduplicator is not None and deduplicator.is_duplicate(signal_id):
         log = logger.bind(
             signal_id=signal_id,
             side=payload.side,
@@ -163,17 +163,13 @@ async def webhook_handler(
             user=log_user,
             user_id=user_id,
         )
-        log.info("webhook_duplicate_signal_rejected")
-        # Return success response - signal was already processed
-        return SignalProcessorResponse(
+        log.info("webhook_duplicate_signal_detected")
+        # Return idempotent response for duplicate per AC5
+        # Use WebhookResponse model for consistency with AC spec
+        return WebhookResponse(
+            status="duplicate",
             signal_id=signal_id,
-            overall_status="success",
-            results=[],
-            total_dex_count=0,
-            successful_count=0,
-            failed_count=0,
-            total_latency_ms=0,
-            timestamp=datetime.utcnow(),
+            code="DUPLICATE_SIGNAL",
         )
 
     # Get rate limiter from app state (Story 1.6)
