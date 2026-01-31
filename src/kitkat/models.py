@@ -513,3 +513,20 @@ class SignalProcessorResponse(BaseModel):
     successful_count: int = Field(..., description="DEXs that executed successfully")
     failed_count: int = Field(..., description="DEXs that failed")
     timestamp: datetime = Field(..., description="When processing completed")
+
+
+# ============================================================================
+# Health Endpoint Models (Story 3.1)
+# ============================================================================
+
+
+class HealthResponse(BaseModel):
+    """Health status response including test mode flag."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    status: Literal["healthy", "degraded", "offline"] = Field(
+        ..., description="Overall health status"
+    )
+    test_mode: bool = Field(..., description="Whether test mode is enabled")
+    timestamp: datetime = Field(..., description="Health check timestamp")

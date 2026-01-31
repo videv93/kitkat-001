@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -16,8 +16,9 @@ from kitkat.api.sessions import router as sessions_router
 from kitkat.api.users import router as users_router
 from kitkat.api.wallet import router as wallet_router
 from kitkat.api.webhook import router as webhook_router
-from kitkat.config import get_settings
+from kitkat.config import Settings, get_settings
 from kitkat.database import Base, get_async_session_factory, get_engine
+from kitkat.models import HealthResponse
 from kitkat.services import SignalDeduplicator, ShutdownManager
 from kitkat.services.rate_limiter import RateLimiter
 from kitkat.services.signature_verifier import get_signature_verifier
@@ -92,6 +93,10 @@ async def lifespan(app: FastAPI):
     # Initialize signature verifier (Story 2.3)
     signature_verifier = get_signature_verifier()
     logger.info("Signature verifier initialized")
+
+    # Log test mode status on startup (Story 3.1)
+    if settings.test_mode:
+        logger.info("Test mode ENABLED - no real trades will be executed")
 
     yield
 
@@ -215,7 +220,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Basic health check endpoint."""
-    return {"status": "healthy"}
+@app.get("/health", response_model=HealthResponse)
+async def health_check() -> HealthResponse:
+    """Health check endpoint including test mode status.
+
+    Story 3.1: AC5 - Returns test_mode flag in response.
+
+    Returns:
+        HealthResponse: Health status with test_mode flag
+    """
+    settings = get_settings()
+    return HealthResponse(
+        status="healthy",
+        test_mode=settings.test_mode,
+        timestamp=datetime.now(),
+    )

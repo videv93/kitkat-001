@@ -14,13 +14,16 @@ from kitkat.main import app
 
 
 @pytest.fixture(autouse=True)
-def reset_settings_singleton():
-    """Reset settings singleton before each test."""
+def reset_singletons():
+    """Reset settings and signal processor singletons before each test."""
     import kitkat.config
+    import kitkat.api.deps
 
     kitkat.config._settings_instance = None
+    kitkat.api.deps._signal_processor = None
     yield
     kitkat.config._settings_instance = None
+    kitkat.api.deps._signal_processor = None
 
 
 @pytest.fixture(autouse=True)
