@@ -75,11 +75,12 @@ class HealthService:
             for adapter, result in zip(self._adapters, results):
                 if isinstance(result, Exception):
                     # Health check failed - track error (AC#3)
+                    error_message = str(result)
                     self._track_error(adapter.dex_id, "health_check_failed")
                     self._log.warning(
                         "Health check failed",
                         dex_id=adapter.dex_id,
-                        error=str(result),
+                        error=error_message,
                     )
                     dex_statuses[adapter.dex_id] = DEXHealth(
                         dex_id=adapter.dex_id,
@@ -87,6 +88,7 @@ class HealthService:
                         latency_ms=None,
                         last_successful=None,
                         error_count=self._get_error_count(adapter.dex_id),
+                        error_message=error_message,
                     )
                 else:
                     # Success - reset error count (AC#3)
@@ -97,6 +99,7 @@ class HealthService:
                         latency_ms=result.latency_ms,
                         last_successful=datetime.now(timezone.utc),
                         error_count=0,
+                        error_message=None,
                     )
 
             # Aggregate overall status (AC#5)

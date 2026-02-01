@@ -237,21 +237,3 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "timestamp": datetime.utcnow().isoformat() + "Z",
         },
     )
-
-
-@app.get("/health", response_model=HealthResponse)
-async def health_check() -> HealthResponse:
-    """Health check endpoint including test mode status.
-
-    Story 3.1: AC5 - Returns test_mode flag in response.
-
-    Returns:
-        HealthResponse: Health status with test_mode flag
-    """
-    settings = get_settings()
-    logger.debug("Health check called", test_mode=settings.test_mode)
-    return HealthResponse(
-        status="healthy",
-        test_mode=settings.test_mode,
-        timestamp=datetime.now(timezone.utc),
-    )

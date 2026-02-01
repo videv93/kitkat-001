@@ -48,6 +48,7 @@ async def get_health(
                 "status": dex.status,
                 "latency_ms": dex.latency_ms,
                 "error_count": dex.error_count,
+                "error_message": dex.error_message,
                 "last_successful": (
                     dex.last_successful.isoformat() if dex.last_successful else None
                 ),

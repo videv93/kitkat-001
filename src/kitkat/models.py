@@ -617,6 +617,9 @@ class DEXHealth(BaseModel):
     error_count: int = Field(
         default=0, description="Number of errors in last 5 minutes", ge=0
     )
+    error_message: Optional[str] = Field(
+        None, description="Error message explaining degraded/offline status (None if healthy)"
+    )
 
 
 class SystemHealth(BaseModel):
