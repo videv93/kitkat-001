@@ -20,8 +20,8 @@ from kitkat.api.wallet import router as wallet_router
 from kitkat.api.webhook import router as webhook_router
 from kitkat.config import get_settings
 from kitkat.database import Base, get_async_session_factory, get_engine
-from kitkat.models import HealthResponse
-from kitkat.services import SignalDeduplicator, ShutdownManager
+from kitkat.services import ShutdownManager, SignalDeduplicator
+from kitkat.services.health_monitor import HealthMonitor
 from kitkat.services.rate_limiter import RateLimiter
 from kitkat.services.signature_verifier import get_signature_verifier
 
@@ -35,12 +35,15 @@ rate_limiter: RateLimiter | None = None
 shutdown_manager: ShutdownManager | None = None
 # Global signature verifier singleton - initialized in lifespan
 signature_verifier = None
+# Global health monitor singleton - initialized in lifespan (Story 4.3)
+health_monitor: HealthMonitor | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup/shutdown."""
-    global deduplicator, rate_limiter, shutdown_manager, signature_verifier
+    global deduplicator, rate_limiter, shutdown_manager
+    global signature_verifier, health_monitor
 
     # Startup
     settings = get_settings()
@@ -93,7 +96,8 @@ async def lifespan(app: FastAPI):
         grace_period_seconds=settings.shutdown_grace_period_seconds
     )
     app.state.shutdown_manager = shutdown_manager
-    logger.info("Shutdown manager initialized", grace_period=settings.shutdown_grace_period_seconds)
+    grace_period = settings.shutdown_grace_period_seconds
+    logger.info("Shutdown manager initialized", grace_period=grace_period)
 
     # Initialize signature verifier (Story 2.3)
     signature_verifier = get_signature_verifier()
@@ -109,7 +113,31 @@ async def lifespan(app: FastAPI):
         adapters = [ExtendedAdapter(settings)]
 
     app.state.adapters = adapters
-    logger.info("Adapters initialized", count=len(adapters), test_mode=settings.test_mode)
+    logger.info(
+        "Adapters initialized", count=len(adapters), test_mode=settings.test_mode
+    )
+
+    # Initialize health monitor background service (Story 4.3)
+    # Creates background task that polls DEX health at configurable intervals
+    # Uses singleton alert service to share rate limiting state with signal processor
+    from kitkat.api.deps import get_alert_service
+
+    alert_service = get_alert_service()
+    health_monitor = HealthMonitor(
+        adapters=adapters,
+        alert_service=alert_service,
+        check_interval=settings.health_check_interval_seconds,
+        max_failures=settings.max_consecutive_failures,
+        max_backoff=settings.reconnect_max_backoff_seconds,
+    )
+    await health_monitor.start()
+    app.state.health_monitor = health_monitor
+    logger.info(
+        "Health monitor started",
+        interval_seconds=settings.health_check_interval_seconds,
+        max_failures=settings.max_consecutive_failures,
+        max_backoff=settings.reconnect_max_backoff_seconds,
+    )
 
     # Log test mode status on startup (Story 3.1)
     if settings.test_mode:
@@ -129,6 +157,11 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Forced shutdown - some orders may be incomplete")
 
+    # Stop health monitor before disconnecting adapters (Story 4.3)
+    if health_monitor is not None:
+        await health_monitor.stop()
+        logger.info("Health monitor stopped")
+
     # Disconnect all adapters (Story 2.11 AC5)
     # Use timeout to prevent shutdown from hanging if disconnect is stuck
     adapters = getattr(app.state, "adapters", [])
@@ -137,9 +170,13 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(adapter.disconnect(), timeout=5.0)
             logger.info("Adapter disconnected", dex_id=adapter.dex_id)
         except asyncio.TimeoutError:
-            logger.warning("Adapter disconnect timeout", dex_id=adapter.dex_id, timeout_seconds=5)
+            logger.warning(
+                "Adapter disconnect timeout", dex_id=adapter.dex_id, timeout_seconds=5
+            )
         except Exception as e:
-            logger.warning("Adapter disconnect failed", dex_id=adapter.dex_id, error=str(e))
+            logger.warning(
+                "Adapter disconnect failed", dex_id=adapter.dex_id, error=str(e)
+            )
 
     # Cleanup other resources
     if deduplicator is not None:
@@ -152,6 +189,7 @@ async def lifespan(app: FastAPI):
     rate_limiter = None
     shutdown_manager = None
     signature_verifier = None
+    health_monitor = None
     await engine.dispose()
     logger.info("Database engine disposed")
 
@@ -171,7 +209,8 @@ app.include_router(sessions_router)
 app.include_router(wallet_router)
 app.include_router(auth_router)
 app.include_router(config_router)
-app.include_router(executions_router)  # Story 3.3: Execution history with test mode filtering
+# Story 3.3: Execution history with test mode filtering
+app.include_router(executions_router)
 
 
 @app.exception_handler(RequestValidationError)
