@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kitkat.config import get_settings
 from kitkat.database import get_db_session
 from kitkat.models import CurrentUser
-from kitkat.services.session_service import SessionService
-from kitkat.services.signal_processor import SignalProcessor
+from kitkat.services.alert import TelegramAlertService
 from kitkat.services.execution_service import ExecutionService
 from kitkat.services.health import HealthService
+from kitkat.services.session_service import SessionService
+from kitkat.services.signal_processor import SignalProcessor
+from kitkat.services.stats import StatsService
 
 logger = structlog.get_logger()
 
@@ -28,8 +30,16 @@ _signal_processor_lock = threading.Lock()
 # Thread-safe lock for lazy initialization of HealthService singleton
 _health_service_lock = threading.Lock()
 
+# Thread-safe lock for lazy initialization of TelegramAlertService singleton (Story 4.2)
+_alert_service_lock = threading.Lock()
+
+# Thread-safe lock for lazy initialization of StatsService singleton (Story 5.1)
+_stats_service_lock = threading.Lock()
+
 # Singleton instances
 _health_service: Optional[HealthService] = None
+_alert_service: Optional[TelegramAlertService] = None
+_stats_service: Optional[StatsService] = None
 
 
 class SessionExpiredError(ValueError):
@@ -217,9 +227,11 @@ async def get_signal_processor(
                         )
 
                 execution_service = ExecutionService(db)
+                alert_service = get_alert_service()
                 _signal_processor = SignalProcessor(
                     adapters=connected_adapters if connected_adapters else [MockAdapter()],
                     execution_service=execution_service,
+                    alert_service=alert_service,
                 )
 
     return _signal_processor
@@ -261,4 +273,74 @@ async def get_health_service(
     return _health_service
 
 
-__all__ = ["get_db_session", "get_db", "check_shutdown", "verify_webhook_token", "get_current_user", "get_signal_processor", "get_health_service"]
+def get_alert_service() -> TelegramAlertService:
+    """Get singleton TelegramAlertService instance.
+
+    Story 4.2: Dependency injection for TelegramAlertService with lazy initialization.
+    Thread-safe initialization using double-checked locking.
+    Reads credentials from settings.
+
+    Returns:
+        TelegramAlertService: Alert service instance (may be disabled if credentials missing)
+
+    Note:
+        Service gracefully degrades when TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID
+        are not configured - alerts are simply not sent, no errors raised.
+    """
+    global _alert_service
+
+    # Double-checked locking: first check without lock for performance
+    if _alert_service is None:
+        with _alert_service_lock:
+            # Second check after acquiring lock to prevent duplicate initialization
+            if _alert_service is None:
+                settings = get_settings()
+                _alert_service = TelegramAlertService(
+                    bot_token=settings.telegram_bot_token,
+                    chat_id=settings.telegram_chat_id,
+                )
+
+    return _alert_service
+
+
+def get_stats_service() -> StatsService:
+    """Get singleton StatsService instance.
+
+    Story 5.1: Dependency injection for StatsService with lazy initialization.
+    Thread-safe initialization using double-checked locking.
+    Uses async session factory from database module.
+
+    Returns:
+        StatsService: Stats service instance for volume tracking
+
+    Note:
+        Service tracks execution volumes and counts with in-memory caching.
+        Cache TTL is 60 seconds by default.
+    """
+    global _stats_service
+
+    # Double-checked locking: first check without lock for performance
+    if _stats_service is None:
+        with _stats_service_lock:
+            # Second check after acquiring lock to prevent duplicate initialization
+            if _stats_service is None:
+                from kitkat.database import get_async_session_factory
+
+                _stats_service = StatsService(
+                    session_factory=get_async_session_factory()
+                )
+
+    return _stats_service
+
+
+__all__ = [
+    "get_db_session",
+    "get_db",
+    "check_shutdown",
+    "verify_webhook_token",
+    "get_current_user",
+    "get_signal_processor",
+    "get_health_service",
+    "get_alert_service",
+    "get_stats_service",
+]

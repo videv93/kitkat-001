@@ -638,3 +638,88 @@ class SystemHealth(BaseModel):
         ..., description="Per-DEX health status"
     )
     timestamp: datetime = Field(..., description="Status snapshot timestamp (UTC)")
+
+
+# ============================================================================
+# Error Log Viewer Models (Story 4.5)
+# ============================================================================
+
+
+class ErrorLogEntry(BaseModel):
+    """Single error log entry for API response (Story 4.5: AC#4).
+
+    Represents a structured error log record retrieved from the database.
+    The id is formatted as "err-{id}" for the API response per AC#4.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    id: str = Field(..., description="Error log ID (format: err-{id})")
+    timestamp: datetime = Field(..., description="When error occurred (UTC)")
+    level: Literal["error", "warning"] = Field(..., description="Log level")
+    error_type: str = Field(..., description="Categorized error code")
+    message: str = Field(..., description="Human-readable error message")
+    context: dict = Field(default_factory=dict, description="Additional context")
+
+
+class ErrorLogResponse(BaseModel):
+    """Response wrapper for error log endpoint (Story 4.5: AC#7).
+
+    Returns error log entries with a count field.
+    Empty results return {"errors": [], "count": 0}.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    errors: list[ErrorLogEntry] = Field(..., description="Error log entries")
+    count: int = Field(..., description="Number of entries returned")
+
+
+# ============================================================================
+# Stats Service & Volume Tracking Models (Story 5.1)
+# ============================================================================
+
+# Type alias for valid time periods
+TimePeriod = Literal["today", "this_week", "this_month", "all_time"]
+
+
+class VolumeStats(BaseModel):
+    """Volume statistics for a specific DEX and time period (Story 5.1: AC#6).
+
+    Returned by StatsService.get_volume_stats() to provide execution volume
+    and count aggregated by DEX and time period. Excludes test mode executions.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    dex_id: str = Field(..., description="DEX identifier ('extended', 'mock', 'all')")
+    period: TimePeriod = Field(..., description="Time period for aggregation")
+    volume_usd: Decimal = Field(
+        ..., ge=0, description="Total volume in USD (filled_size * fill_price)"
+    )
+    execution_count: int = Field(
+        ..., ge=0, description="Number of successful executions"
+    )
+    last_updated: datetime = Field(..., description="When stats were calculated (UTC)")
+
+
+class AggregatedVolumeStats(BaseModel):
+    """Aggregated volume statistics across multiple DEXs (Story 5.1: Task 1.3).
+
+    Provides total volume across all DEXs with per-DEX breakdown.
+    Used for dashboard and multi-DEX volume queries.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    period: TimePeriod = Field(..., description="Time period for aggregation")
+    total_volume_usd: Decimal = Field(
+        ..., ge=0, description="Total volume across all DEXs"
+    )
+    total_execution_count: int = Field(
+        ..., ge=0, description="Total executions across all DEXs"
+    )
+    by_dex: dict[str, VolumeStats] = Field(
+        ..., description="Per-DEX volume breakdown"
+    )
+    last_updated: datetime = Field(..., description="When stats were calculated (UTC)")

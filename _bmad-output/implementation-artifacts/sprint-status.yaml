@@ -75,15 +75,15 @@ development_status:
   # Epic 4: System Monitoring & Alerting
   epic-4: in-progress
   4-1-health-service-dex-status: review
-  4-2-telegram-alert-service: backlog
-  4-3-auto-recovery-after-outage: backlog
-  4-4-error-logging-with-full-context: backlog
-  4-5-error-log-viewer: backlog
+  4-2-telegram-alert-service: done
+  4-3-auto-recovery-after-outage: review
+  4-4-error-logging-with-full-context: in-progress
+  4-5-error-log-viewer: in-progress
   epic-4-retrospective: optional
 
   # Epic 5: Dashboard, Volume Stats & Configuration
-  epic-5: backlog
-  5-1-stats-service-volume-tracking: backlog
+  epic-5: in-progress
+  5-1-stats-service-volume-tracking: review
   5-2-volume-display-today-week: backlog
   5-3-execution-count-success-rate: backlog
   5-4-dashboard-endpoint: backlog
