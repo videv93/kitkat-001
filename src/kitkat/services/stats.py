@@ -120,19 +120,32 @@ class StatsService:
             user_id: If provided, only invalidate entries for this user.
                      If None, invalidate all cache entries.
         """
+        # Initialize exec cache if needed
+        if not hasattr(self, "_exec_cache"):
+            self._exec_cache: dict[str, tuple] = {}
+
         if user_id is None:
             self._volume_cache.clear()
+            self._exec_cache.clear()
             self._log.debug("Cache cleared completely")
         else:
+            # Invalidate volume cache
             keys_to_remove = [
                 k for k in self._volume_cache if k.startswith(f"{user_id}:")
             ]
             for k in keys_to_remove:
                 del self._volume_cache[k]
+            # Invalidate execution cache (Story 5.3)
+            exec_keys_to_remove = [
+                k for k in self._exec_cache if f":{user_id}:" in k
+            ]
+            for k in exec_keys_to_remove:
+                del self._exec_cache[k]
             self._log.debug(
                 "Cache invalidated for user",
                 user_id=user_id,
-                keys_removed=len(keys_to_remove),
+                volume_keys_removed=len(keys_to_remove),
+                exec_keys_removed=len(exec_keys_to_remove),
             )
 
     async def get_volume_stats(
@@ -307,3 +320,151 @@ class StatsService:
             by_dex=by_dex,
             last_updated=now,
         )
+
+    def _get_exec_cache_key(
+        self,
+        user_id: int | None,
+        period: TimePeriod,
+    ) -> str:
+        """Generate cache key for execution stats query (Story 5.3).
+
+        Args:
+            user_id: Optional user filter
+            period: Time period
+
+        Returns:
+            Cache key string in format "exec:user_id:period"
+        """
+        return f"exec:{user_id or 'all'}:{period}"
+
+    def _is_exec_cache_valid(self, key: str) -> bool:
+        """Check if execution stats cache entry is still valid.
+
+        Args:
+            key: Cache key to check
+
+        Returns:
+            True if cache entry exists and is within TTL
+        """
+        if not hasattr(self, "_exec_cache"):
+            self._exec_cache: dict[str, tuple] = {}
+        if key not in self._exec_cache:
+            return False
+        _, cached_at = self._exec_cache[key]
+        elapsed = (datetime.now(timezone.utc) - cached_at).total_seconds()
+        return elapsed < self._cache_ttl
+
+    async def get_execution_stats(
+        self,
+        user_id: int | None = None,
+        period: TimePeriod = "today",
+    ):
+        """Get execution count and success rate for a period (Story 5.3).
+
+        Queries executions table to count filled, partial, and failed executions,
+        excluding test mode executions.
+
+        Args:
+            user_id: Optional filter by user ID
+            period: Time period ("today", "this_week", "all_time")
+
+        Returns:
+            ExecutionPeriodStats with total, successful, failed, partial, success_rate
+        """
+        from kitkat.models import ExecutionPeriodStats
+
+        # Initialize cache if needed
+        if not hasattr(self, "_exec_cache"):
+            self._exec_cache: dict[str, tuple] = {}
+
+        cache_key = self._get_exec_cache_key(user_id, period)
+
+        # Check cache first (Task 4)
+        if self._is_exec_cache_valid(cache_key):
+            stats, _ = self._exec_cache[cache_key]
+            self._log.debug("Execution stats cache hit", cache_key=cache_key)
+            return stats
+
+        start_dt, end_dt = self._calculate_period_bounds(period)
+
+        log = self._log.bind(
+            user_id=user_id,
+            period=period,
+            start_dt=start_dt.isoformat(),
+            end_dt=end_dt.isoformat(),
+        )
+
+        async with self._session_factory() as session:
+            # Query all executions in period, excluding pending (AC#1)
+            query = select(ExecutionModel).where(
+                and_(
+                    ExecutionModel.status.in_(["filled", "partial", "failed"]),
+                    ExecutionModel.created_at >= start_dt,
+                    ExecutionModel.created_at <= end_dt,
+                )
+            )
+
+            if user_id:
+                query = query.where(ExecutionModel.user_id == user_id)
+
+            result = await session.execute(query)
+            executions = result.scalars().all()
+
+        # Count by status, excluding test mode (AC#3, AC#4)
+        successful = 0
+        partial = 0
+        failed = 0
+
+        for execution in executions:
+            # Parse result_data JSON (same pattern as get_volume_stats)
+            try:
+                if isinstance(execution.result_data, str):
+                    result_data = json.loads(execution.result_data)
+                else:
+                    result_data = execution.result_data or {}
+            except (json.JSONDecodeError, TypeError):
+                result_data = {}
+
+            # Exclude test mode executions (AC#4)
+            is_test_mode = result_data.get("is_test_mode", False)
+            if is_test_mode is True or is_test_mode == "true":
+                continue
+
+            if execution.status == "filled":
+                successful += 1
+            elif execution.status == "partial":
+                partial += 1
+            elif execution.status == "failed":
+                failed += 1
+
+        total = successful + partial + failed
+
+        # Calculate success rate (AC#2, AC#3)
+        if total == 0:
+            success_rate = "N/A"
+        else:
+            rate = ((successful + partial) / total) * 100
+            success_rate = f"{rate:.2f}%"
+
+        stats = ExecutionPeriodStats(
+            total=total,
+            successful=successful,
+            failed=failed,
+            partial=partial,
+            success_rate=success_rate,
+        )
+
+        # Cache the result (Task 4)
+        now = datetime.now(timezone.utc)
+        self._exec_cache[cache_key] = (stats, now)
+
+        log.info(
+            "Execution stats calculated",
+            total=total,
+            successful=successful,
+            partial=partial,
+            failed=failed,
+            success_rate=success_rate,
+        )
+
+        return stats

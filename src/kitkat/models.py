@@ -723,3 +723,159 @@ class AggregatedVolumeStats(BaseModel):
         ..., description="Per-DEX volume breakdown"
     )
     last_updated: datetime = Field(..., description="When stats were calculated (UTC)")
+
+
+# ============================================================================
+# Execution Count & Success Rate Models (Story 5.3)
+# ============================================================================
+
+
+class ExecutionPeriodStats(BaseModel):
+    """Execution statistics for a single time period (Story 5.3: AC#1).
+
+    Provides execution counts by status (filled, partial, failed) and
+    calculated success rate for a specific time period. Test mode
+    executions are excluded from these counts.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    total: int = Field(..., ge=0, description="Total executions in period")
+    successful: int = Field(..., ge=0, description="Fully filled executions")
+    failed: int = Field(..., ge=0, description="Failed executions")
+    partial: int = Field(..., ge=0, description="Partial fills")
+    success_rate: str = Field(
+        ..., description="Success rate as percentage string (e.g., '97.75%') or 'N/A'"
+    )
+
+
+class ExecutionStatsResponse(BaseModel):
+    """Response for GET /api/stats/executions endpoint (Story 5.3: AC#1).
+
+    Provides execution counts and success rates for today, this week,
+    and all time periods.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    today: ExecutionPeriodStats = Field(..., description="Today's execution stats")
+    this_week: ExecutionPeriodStats = Field(..., description="This week's execution stats")
+    all_time: ExecutionPeriodStats = Field(..., description="All-time execution stats")
+    updated_at: datetime = Field(..., description="When stats were calculated (UTC)")
+
+
+# ============================================================================
+# Dashboard Response Models (Story 5.4)
+# ============================================================================
+
+
+class DashboardDexStatus(BaseModel):
+    """DEX status for dashboard display (Story 5.4: AC#1).
+
+    Represents the health status of a single DEX adapter for the dashboard,
+    with status and latency information.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    status: Literal["healthy", "degraded", "offline"] = Field(
+        ..., description="Current health status"
+    )
+    latency_ms: Optional[int] = Field(
+        None, description="Last measured response time in milliseconds", ge=0
+    )
+
+
+class DashboardVolumeToday(BaseModel):
+    """Today's volume stats for dashboard (Story 5.4: AC#1).
+
+    Provides total volume and per-DEX breakdown formatted for display.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    total_usd: str = Field(..., description="Total volume as formatted string")
+    by_dex: dict[str, str] = Field(
+        default_factory=dict, description="Volume per DEX as formatted strings"
+    )
+
+
+class DashboardExecutionsToday(BaseModel):
+    """Today's execution stats for dashboard (Story 5.4: AC#1).
+
+    Provides execution count and success rate for quick dashboard display.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    total: int = Field(..., ge=0, description="Total executions today")
+    success_rate: str = Field(..., description="Success rate percentage or 'N/A'")
+
+
+class DashboardResponse(BaseModel):
+    """Response for GET /api/dashboard endpoint (Story 5.4: AC#1).
+
+    Aggregates all key status information for "glance and go" dashboard.
+    Combines health status, volume stats, execution stats, and error counts
+    into a single response optimized for quick dashboard display.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    status: Literal["all_ok", "degraded", "offline"] = Field(
+        ..., description="Overall system status"
+    )
+    test_mode: bool = Field(..., description="Whether test mode is enabled")
+    test_mode_warning: Optional[str] = Field(
+        None, description="Warning message when test mode is active (AC#5)"
+    )
+    dex_status: dict[str, DashboardDexStatus] = Field(
+        ..., description="Per-DEX health status"
+    )
+    volume_today: DashboardVolumeToday = Field(
+        ..., description="Today's volume breakdown"
+    )
+    executions_today: DashboardExecutionsToday = Field(
+        ..., description="Today's execution stats"
+    )
+    recent_errors: int = Field(..., ge=0, description="Error count in last hour")
+    onboarding_complete: bool = Field(
+        ..., description="Whether onboarding is complete"
+    )
+    updated_at: datetime = Field(..., description="Response timestamp (UTC)")
+
+
+# ============================================================================
+# Onboarding Checklist Models (Story 5.5)
+# ============================================================================
+
+
+class OnboardingStep(BaseModel):
+    """Individual onboarding step status (Story 5.5: AC#1).
+
+    Represents a single step in the onboarding checklist with its completion
+    status. Steps are checked dynamically based on user state.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    id: str = Field(..., description="Step identifier (e.g., 'wallet_connected')")
+    name: str = Field(..., description="Human-readable step name")
+    complete: bool = Field(..., description="Whether step is complete")
+
+
+class OnboardingResponse(BaseModel):
+    """Response for GET /api/onboarding endpoint (Story 5.5: AC#1).
+
+    Shows user's progress through the onboarding checklist. Steps are
+    computed on-demand to ensure accuracy. All 5 steps must be complete
+    for onboarding to be considered finished.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    complete: bool = Field(..., description="True if ALL steps complete")
+    progress: str = Field(..., description="Progress as 'X/5' format")
+    steps: list[OnboardingStep] = Field(
+        ..., description="All onboarding steps with status"
+    )

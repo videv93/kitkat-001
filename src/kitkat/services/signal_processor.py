@@ -5,19 +5,26 @@ Each signal is executed on all active (connected) adapters simultaneously, with 
 collected and logged individually.
 
 Story 3.3: Logs is_test_mode flag in execution result_data for filtering test executions.
+Story 4.2: Sends Telegram alerts on execution failures and partial fills.
 """
 
 import asyncio
 import time
 from decimal import Decimal
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Optional
 
 import structlog
 
 from kitkat.adapters.base import DEXAdapter
 from kitkat.config import get_settings
+from kitkat.logging import ErrorType
 from kitkat.models import DEXExecutionResult, SignalPayload, SignalProcessorResponse
+from kitkat.services.error_logger import get_error_logger
 from kitkat.services.execution_service import ExecutionService
+
+if TYPE_CHECKING:
+    from kitkat.services.alert import TelegramAlertService
 
 logger = structlog.get_logger()
 
@@ -39,15 +46,18 @@ class SignalProcessor:
         self,
         adapters: list[DEXAdapter],
         execution_service: ExecutionService,
+        alert_service: Optional["TelegramAlertService"] = None,
     ):
         """Initialize SignalProcessor with adapters and execution service.
 
         Args:
             adapters: List of configured DEX adapters (Extended, Mock, etc.)
             execution_service: Service for logging execution attempts
+            alert_service: Optional Telegram alert service for failure notifications (Story 4.2)
         """
         self._adapters = adapters
         self._execution_service = execution_service
+        self._alert_service = alert_service
         self._log = structlog.get_logger().bind(service="signal_processor")
 
     def get_active_adapters(self) -> list[DEXAdapter]:
@@ -100,7 +110,6 @@ class SignalProcessor:
 
         # Execute in parallel with exception handling and timeout protection
         # 30 second timeout per signal to prevent indefinite hangs
-        start_time = time.perf_counter()
         try:
             raw_results = await asyncio.wait_for(
                 asyncio.gather(*tasks, return_exceptions=True),
@@ -121,7 +130,7 @@ class SignalProcessor:
         # Process results and log to ExecutionService
         processed_results = []
         for adapter, result in zip(active_adapters, raw_results):
-            processed = await self._process_result(result, signal_id, adapter.dex_id)
+            processed = await self._process_result(result, signal_id, adapter.dex_id, signal)
             processed_results.append(processed)
 
         # Calculate overall status
@@ -198,6 +207,18 @@ class SignalProcessor:
             latency_ms = int((time.perf_counter() - start_time) * 1000)
             log.error("DEX execution failed", error=str(e), latency_ms=latency_ms)
 
+            # Story 4.4: Log execution error with full context (AC#1, AC#2)
+            get_error_logger().log_execution_error(
+                signal_id=signal_id,
+                dex_id=adapter.dex_id,
+                error_type=ErrorType.EXECUTION_FAILED,
+                error_message=str(e),
+                symbol=signal.symbol,
+                side=signal.side,
+                size=str(signal.size),
+                latency_ms=latency_ms,
+            )
+
             return DEXExecutionResult(
                 dex_id=adapter.dex_id,
                 status="error",
@@ -212,6 +233,7 @@ class SignalProcessor:
         result: DEXExecutionResult | Exception,
         signal_id: str,
         dex_id: str,
+        signal: Optional[SignalPayload] = None,
     ) -> DEXExecutionResult:
         """Process individual result, log to ExecutionService, handle exceptions.
 
@@ -219,11 +241,13 @@ class SignalProcessor:
         outcomes to ExecutionService for audit trail.
 
         Story 3.3: Adds is_test_mode flag to result_data for database filtering.
+        Story 4.2: Sends Telegram alerts on failures and partial fills (fire-and-forget).
 
         Args:
             result: Result from _execute_on_adapter (DEXExecutionResult or Exception)
             signal_id: Signal hash for correlation
             dex_id: DEX identifier for context
+            signal: Original signal payload for partial fill context (Story 4.2)
 
         Returns:
             DEXExecutionResult (either original or converted from exception)
@@ -255,5 +279,27 @@ class SignalProcessor:
             },
             latency_ms=result.latency_ms,
         )
+
+        # Story 4.2: Send Telegram alerts on failures/errors (AC#3, AC#4)
+        if self._alert_service and result.status in ("failed", "error"):
+            asyncio.create_task(
+                self._alert_service.send_execution_failure(
+                    signal_id=signal_id,
+                    dex_id=result.dex_id,
+                    error_message=result.error_message or "Unknown error",
+                )
+            )
+
+        # Story 4.2: Send Telegram alerts on partial fills (AC#5, AC#4)
+        if self._alert_service and result.status == "partial" and signal:
+            remaining = signal.size - result.filled_amount
+            asyncio.create_task(
+                self._alert_service.send_partial_fill(
+                    symbol=signal.symbol,
+                    filled_size=str(result.filled_amount),
+                    remaining_size=str(remaining),
+                    dex_id=result.dex_id,
+                )
+            )
 
         return result

@@ -246,3 +246,46 @@ class ExecutionModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime, default=_utc_now, index=True, nullable=False
     )
+
+
+# ============================================================================
+# ORM Models for Error Logging (Story 4.5)
+# ============================================================================
+
+
+class ErrorLogModel(Base):
+    """SQLAlchemy ORM model for error_logs table (Story 4.5).
+
+    Stores structured error logs for user-accessible error viewing.
+    Complements stdout logging with queryable database records.
+
+    Attributes:
+        id: Auto-increment primary key
+        level: Log level ("error" or "warning")
+        error_type: Categorized error code (from ErrorType class)
+        message: Human-readable error description
+        context_data: JSON context (signal_id, dex_id, latency_ms, etc.)
+        created_at: UTC timestamp (indexed for time queries and cleanup)
+
+    Table: error_logs
+    Indexes: created_at (for time-based queries and cleanup), error_type
+    """
+
+    __tablename__ = "error_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    level: Mapped[str] = mapped_column(
+        String(10), nullable=False
+    )  # "error" or "warning"
+    error_type: Mapped[str] = mapped_column(
+        String(50), index=True, nullable=False
+    )  # Categorized error code
+    message: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # Human-readable description
+    context_data: Mapped[str] = mapped_column(
+        Text, default="{}", nullable=False
+    )  # JSON with signal_id, dex_id, etc.
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime, default=_utc_now, index=True, nullable=False
+    )

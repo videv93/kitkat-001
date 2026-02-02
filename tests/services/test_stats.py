@@ -506,3 +506,400 @@ class TestStatsServiceDependency:
         from kitkat.api.deps import get_stats_service
 
         assert callable(get_stats_service)
+
+
+# ============================================================================
+# Execution Count & Success Rate Tests (Story 5.3)
+# ============================================================================
+
+
+class TestExecutionPeriodStatsModel:
+    """Test ExecutionPeriodStats Pydantic model (Story 5.3: Task 2)."""
+
+    def test_execution_period_stats_creation(self):
+        """Test ExecutionPeriodStats model can be created with required fields."""
+        from kitkat.models import ExecutionPeriodStats
+
+        stats = ExecutionPeriodStats(
+            total=14,
+            successful=14,
+            failed=0,
+            partial=0,
+            success_rate="100.00%",
+        )
+
+        assert stats.total == 14
+        assert stats.successful == 14
+        assert stats.failed == 0
+        assert stats.partial == 0
+        assert stats.success_rate == "100.00%"
+
+    def test_execution_period_stats_with_failures(self):
+        """Test ExecutionPeriodStats with mixed results."""
+        from kitkat.models import ExecutionPeriodStats
+
+        stats = ExecutionPeriodStats(
+            total=89,
+            successful=87,
+            failed=1,
+            partial=1,
+            success_rate="97.75%",
+        )
+
+        assert stats.total == 89
+        assert stats.successful == 87
+        assert stats.failed == 1
+        assert stats.partial == 1
+        assert stats.success_rate == "97.75%"
+
+    def test_execution_period_stats_na_success_rate(self):
+        """Test ExecutionPeriodStats with N/A success rate (AC#3)."""
+        from kitkat.models import ExecutionPeriodStats
+
+        stats = ExecutionPeriodStats(
+            total=0,
+            successful=0,
+            failed=0,
+            partial=0,
+            success_rate="N/A",
+        )
+
+        assert stats.total == 0
+        assert stats.success_rate == "N/A"
+
+
+class TestExecutionStatsResponseModel:
+    """Test ExecutionStatsResponse Pydantic model (Story 5.3: Task 2)."""
+
+    def test_execution_stats_response_creation(self):
+        """Test ExecutionStatsResponse with all periods."""
+        from kitkat.models import ExecutionPeriodStats, ExecutionStatsResponse
+
+        now = datetime.now(timezone.utc)
+        response = ExecutionStatsResponse(
+            today=ExecutionPeriodStats(
+                total=14, successful=14, failed=0, partial=0, success_rate="100.00%"
+            ),
+            this_week=ExecutionPeriodStats(
+                total=89, successful=87, failed=1, partial=1, success_rate="97.75%"
+            ),
+            all_time=ExecutionPeriodStats(
+                total=523, successful=515, failed=5, partial=3, success_rate="98.47%"
+            ),
+            updated_at=now,
+        )
+
+        assert response.today.total == 14
+        assert response.this_week.total == 89
+        assert response.all_time.total == 523
+        assert response.updated_at == now
+
+
+class TestGetExecutionStats:
+    """Test StatsService.get_execution_stats method (Story 5.3: AC#1-4)."""
+
+    @pytest.mark.asyncio
+    async def test_execution_stats_counts_by_status(self):
+        """Test execution counts correctly by filled, partial, failed status."""
+        from kitkat.database import ExecutionModel
+        from kitkat.services.stats import StatsService
+
+        # Create mock executions with different statuses
+        mock_filled = MagicMock(spec=ExecutionModel)
+        mock_filled.id = 1
+        mock_filled.status = "filled"
+        mock_filled.result_data = json.dumps({"is_test_mode": False})
+        mock_filled.created_at = datetime.now(timezone.utc)
+
+        mock_partial = MagicMock(spec=ExecutionModel)
+        mock_partial.id = 2
+        mock_partial.status = "partial"
+        mock_partial.result_data = json.dumps({"is_test_mode": False})
+        mock_partial.created_at = datetime.now(timezone.utc)
+
+        mock_failed = MagicMock(spec=ExecutionModel)
+        mock_failed.id = 3
+        mock_failed.status = "failed"
+        mock_failed.result_data = json.dumps({"is_test_mode": False})
+        mock_failed.created_at = datetime.now(timezone.utc)
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_filled, mock_partial, mock_failed]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_factory = MagicMock()
+        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        service = StatsService(session_factory=mock_factory)
+        stats = await service.get_execution_stats(period="today")
+
+        assert stats.total == 3
+        assert stats.successful == 1
+        assert stats.partial == 1
+        assert stats.failed == 1
+
+    @pytest.mark.asyncio
+    async def test_success_rate_includes_partial(self):
+        """Test success_rate = (successful + partial) / total * 100 (AC#2)."""
+        from kitkat.database import ExecutionModel
+        from kitkat.services.stats import StatsService
+
+        # Create 8 filled + 2 partial + 1 failed = 11 total
+        # Success rate = (8 + 2) / 11 * 100 = 90.91%
+        executions = []
+        for i in range(8):
+            mock = MagicMock(spec=ExecutionModel)
+            mock.id = i + 1
+            mock.status = "filled"
+            mock.result_data = json.dumps({"is_test_mode": False})
+            mock.created_at = datetime.now(timezone.utc)
+            executions.append(mock)
+
+        for i in range(2):
+            mock = MagicMock(spec=ExecutionModel)
+            mock.id = i + 9
+            mock.status = "partial"
+            mock.result_data = json.dumps({"is_test_mode": False})
+            mock.created_at = datetime.now(timezone.utc)
+            executions.append(mock)
+
+        mock_failed = MagicMock(spec=ExecutionModel)
+        mock_failed.id = 11
+        mock_failed.status = "failed"
+        mock_failed.result_data = json.dumps({"is_test_mode": False})
+        mock_failed.created_at = datetime.now(timezone.utc)
+        executions.append(mock_failed)
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = executions
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_factory = MagicMock()
+        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        service = StatsService(session_factory=mock_factory)
+        stats = await service.get_execution_stats(period="today")
+
+        assert stats.total == 11
+        assert stats.successful == 8
+        assert stats.partial == 2
+        assert stats.failed == 1
+        assert stats.success_rate == "90.91%"
+
+    @pytest.mark.asyncio
+    async def test_zero_executions_returns_na(self):
+        """Test zero executions returns 'N/A' not divide by zero (AC#3)."""
+        from kitkat.services.stats import StatsService
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []  # No executions
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_factory = MagicMock()
+        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        service = StatsService(session_factory=mock_factory)
+        stats = await service.get_execution_stats(period="today")
+
+        assert stats.total == 0
+        assert stats.successful == 0
+        assert stats.failed == 0
+        assert stats.partial == 0
+        assert stats.success_rate == "N/A"
+
+    @pytest.mark.asyncio
+    async def test_excludes_test_mode_executions(self):
+        """Test test mode executions are excluded from counts (AC#4)."""
+        from kitkat.database import ExecutionModel
+        from kitkat.services.stats import StatsService
+
+        # One real, one test mode
+        mock_real = MagicMock(spec=ExecutionModel)
+        mock_real.id = 1
+        mock_real.status = "filled"
+        mock_real.result_data = json.dumps({"is_test_mode": False})
+        mock_real.created_at = datetime.now(timezone.utc)
+
+        mock_test = MagicMock(spec=ExecutionModel)
+        mock_test.id = 2
+        mock_test.status = "filled"
+        mock_test.result_data = json.dumps({"is_test_mode": True})  # Test mode
+        mock_test.created_at = datetime.now(timezone.utc)
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_real, mock_test]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_factory = MagicMock()
+        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        service = StatsService(session_factory=mock_factory)
+        stats = await service.get_execution_stats(period="today")
+
+        # Only the real execution counts
+        assert stats.total == 1
+        assert stats.successful == 1
+        assert stats.success_rate == "100.00%"
+
+    @pytest.mark.asyncio
+    async def test_excludes_test_mode_string_true(self):
+        """Test test mode exclusion handles 'true' string value."""
+        from kitkat.database import ExecutionModel
+        from kitkat.services.stats import StatsService
+
+        mock_real = MagicMock(spec=ExecutionModel)
+        mock_real.id = 1
+        mock_real.status = "filled"
+        mock_real.result_data = json.dumps({"is_test_mode": False})
+        mock_real.created_at = datetime.now(timezone.utc)
+
+        mock_test = MagicMock(spec=ExecutionModel)
+        mock_test.id = 2
+        mock_test.status = "filled"
+        mock_test.result_data = json.dumps({"is_test_mode": "true"})  # String "true"
+        mock_test.created_at = datetime.now(timezone.utc)
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_real, mock_test]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_factory = MagicMock()
+        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        service = StatsService(session_factory=mock_factory)
+        stats = await service.get_execution_stats(period="today")
+
+        assert stats.total == 1  # Only real execution
+
+    @pytest.mark.asyncio
+    async def test_all_time_period(self):
+        """Test all_time period includes historical data."""
+        from kitkat.services.stats import StatsService
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_factory = MagicMock()
+        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        service = StatsService(session_factory=mock_factory)
+        stats = await service.get_execution_stats(period="all_time")
+
+        # Just verify it doesn't error and returns valid structure
+        assert stats.total == 0
+        assert stats.success_rate == "N/A"
+
+
+class TestExecutionStatsCaching:
+    """Test caching for execution stats (Story 5.3: Task 4)."""
+
+    def test_execution_cache_key_generation(self):
+        """Test execution stats uses separate cache key format."""
+        from kitkat.services.stats import StatsService
+
+        service = StatsService(session_factory=MagicMock())
+
+        # Execution stats should use "exec:" prefix
+        key = service._get_exec_cache_key(user_id=123, period="today")
+        assert key == "exec:123:today"
+
+        key_all = service._get_exec_cache_key(user_id=None, period="this_week")
+        assert key_all == "exec:all:this_week"
+
+    @pytest.mark.asyncio
+    async def test_execution_stats_cached(self):
+        """Test execution stats are cached after first query."""
+        from kitkat.database import ExecutionModel
+        from kitkat.services.stats import StatsService
+
+        mock_filled = MagicMock(spec=ExecutionModel)
+        mock_filled.id = 1
+        mock_filled.status = "filled"
+        mock_filled.result_data = json.dumps({"is_test_mode": False})
+        mock_filled.created_at = datetime.now(timezone.utc)
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_filled]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        mock_factory = MagicMock()
+        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_factory.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        service = StatsService(session_factory=mock_factory)
+
+        # First call - should query database
+        stats1 = await service.get_execution_stats(period="today")
+        assert stats1.total == 1
+
+        # Second call - should use cache (mock won't be called again)
+        mock_session.execute.reset_mock()
+        stats2 = await service.get_execution_stats(period="today")
+        assert stats2.total == 1
+
+        # Verify database was only queried once
+        mock_session.execute.assert_not_called()
+
+    def test_invalidate_cache_clears_execution_cache(self):
+        """Test invalidate_cache clears execution stats cache too."""
+        from kitkat.models import ExecutionPeriodStats
+        from kitkat.services.stats import StatsService
+
+        service = StatsService(session_factory=MagicMock())
+        now = datetime.now(timezone.utc)
+
+        # Initialize _exec_cache lazily (as done in get_execution_stats)
+        service._exec_cache = {}
+
+        # Add to both caches
+        exec_stats = ExecutionPeriodStats(
+            total=10, successful=9, failed=1, partial=0, success_rate="90.00%"
+        )
+        service._exec_cache["exec:all:today"] = (exec_stats, now)
+        service._volume_cache["all:all:today"] = (
+            VolumeStats(
+                dex_id="all",
+                period="today",
+                volume_usd=Decimal("1000"),
+                execution_count=10,
+                last_updated=now,
+            ),
+            now,
+        )
+
+        assert len(service._exec_cache) == 1
+        assert len(service._volume_cache) == 1
+
+        service.invalidate_cache()
+
+        # Both should be cleared
+        assert len(service._exec_cache) == 0
+        assert len(service._volume_cache) == 0

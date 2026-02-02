@@ -36,6 +36,8 @@ from kitkat.adapters.exceptions import (
     DEXTimeoutError,
 )
 from kitkat.config import Settings
+from kitkat.logging import ErrorType
+from kitkat.services.error_logger import get_error_logger
 from kitkat.models import (
     ConnectParams,
     HealthStatus,
@@ -150,6 +152,15 @@ class ExtendedAdapter(DEXAdapter):
             self._log.error(
                 "Authentication failed",
                 status_code=e.response.status_code,
+            )
+            # Story 4.4: Log DEX connection error with full context
+            get_error_logger().log_dex_error(
+                dex_id=self.dex_id,
+                error_type=ErrorType.DEX_CONNECTION_FAILED,
+                error_message=f"Authentication failed ({e.response.status_code})",
+                request_method="GET",
+                request_url=str(self._settings.extended_api_base_url) + "/user/positions",
+                response_status=e.response.status_code,
             )
             status_code = e.response.status_code
             raise DEXConnectionError(
@@ -488,14 +499,40 @@ class ExtendedAdapter(DEXAdapter):
 
         except httpx.TimeoutException as e:
             log.error("Order timeout", error=str(e))
+            # Story 4.4: Log DEX timeout with request context
+            get_error_logger().log_dex_error(
+                dex_id=self.dex_id,
+                error_type=ErrorType.DEX_TIMEOUT,
+                error_message=f"Order submission timed out: {e}",
+                request_method="POST",
+                request_url=str(self._settings.extended_api_base_url) + "/user/order",
+            )
             raise DEXTimeoutError(f"Order submission timed out: {e}") from e
         except httpx.HTTPStatusError as e:
             log.error("Order HTTP error", status_code=e.response.status_code)
+            # Story 4.4: Log DEX error with response context
+            get_error_logger().log_dex_error(
+                dex_id=self.dex_id,
+                error_type=ErrorType.DEX_ERROR,
+                error_message=f"Order submission failed: HTTP {e.response.status_code}",
+                request_method="POST",
+                request_url=str(self._settings.extended_api_base_url) + "/user/order",
+                response_status=e.response.status_code,
+                response_body=e.response.text,
+            )
             raise DEXConnectionError(
                 f"Order submission failed: HTTP {e.response.status_code}"
             ) from e
         except httpx.HTTPError as e:
             log.error("Order failed", error=str(e))
+            # Story 4.4: Log DEX connection error
+            get_error_logger().log_dex_error(
+                dex_id=self.dex_id,
+                error_type=ErrorType.DEX_CONNECTION_FAILED,
+                error_message=f"Order submission failed: {e}",
+                request_method="POST",
+                request_url=str(self._settings.extended_api_base_url) + "/user/order",
+            )
             raise DEXConnectionError(f"Order submission failed: {e}") from e
 
     async def get_order_status(self, order_id: str) -> OrderStatus:

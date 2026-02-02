@@ -32,6 +32,10 @@ class MockDEXAdapter(DEXAdapter):
     def dex_id(self) -> str:
         return self.dex_id_val
 
+    @property
+    def is_connected(self) -> bool:
+        return self._connected
+
     async def connect(self, params=None) -> None:
         self._connected = True
 
@@ -371,7 +375,11 @@ async def test_decimal_amounts_preserved():
     response = await processor.process_signal(signal, "signal-decimal")
 
     result = response.results[0]
-    assert result.filled_amount == Decimal("1.23456789")
+    # Note: filled_amount is 0 at submission time - actual fills come via WebSocket (Story 2.8)
+    # This test validates that Decimal handling works, not that fills happen immediately
+    assert result.filled_amount == Decimal("0")
+    # Verify the signal size was passed correctly to the adapter
+    assert adapter.execute_order_calls[0]["size"] == Decimal("1.23456789")
 
 
 @pytest.mark.asyncio
@@ -389,3 +397,174 @@ async def test_error_message_captured():
     assert result.error_message is not None
     assert "DEX extended execution failed" in result.error_message
     assert result.order_id is None
+
+
+# Story 4.2: Tests for TelegramAlertService integration
+class MockAlertService:
+    """Mock TelegramAlertService for testing."""
+
+    def __init__(self):
+        self.execution_failure_calls = []
+        self.partial_fill_calls = []
+
+    async def send_execution_failure(
+        self, signal_id: str, dex_id: str, error_message: str, timestamp=None
+    ):
+        self.execution_failure_calls.append({
+            "signal_id": signal_id,
+            "dex_id": dex_id,
+            "error_message": error_message,
+        })
+
+    async def send_partial_fill(
+        self, symbol: str, filled_size: str, remaining_size: str, dex_id: str
+    ):
+        self.partial_fill_calls.append({
+            "symbol": symbol,
+            "filled_size": filled_size,
+            "remaining_size": remaining_size,
+            "dex_id": dex_id,
+        })
+
+
+@pytest.mark.asyncio
+async def test_alert_sent_on_execution_failure():
+    """Story 4.2: AC#3 - Alert sent on execution failure."""
+    adapter = MockDEXAdapter("extended", fail=True)
+    exec_service = MockExecutionService()
+    alert_service = MockAlertService()
+    processor = SignalProcessor([adapter], exec_service, alert_service=alert_service)
+
+    signal = SignalPayload(symbol="ETH/USD", side="buy", size=Decimal("1.0"))
+    await processor.process_signal(signal, "signal-fail-alert")
+
+    # Allow time for asyncio.create_task to complete
+    await asyncio.sleep(0.05)
+
+    assert len(alert_service.execution_failure_calls) == 1
+    call = alert_service.execution_failure_calls[0]
+    assert call["signal_id"] == "signal-fail-alert"
+    assert call["dex_id"] == "extended"
+    assert "DEX extended execution failed" in call["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_no_alert_on_success():
+    """Story 4.2: No alert sent when execution succeeds."""
+    adapter = MockDEXAdapter("extended", fail=False)
+    exec_service = MockExecutionService()
+    alert_service = MockAlertService()
+    processor = SignalProcessor([adapter], exec_service, alert_service=alert_service)
+
+    signal = SignalPayload(symbol="ETH/USD", side="buy", size=Decimal("1.0"))
+    await processor.process_signal(signal, "signal-success")
+
+    await asyncio.sleep(0.05)
+
+    assert len(alert_service.execution_failure_calls) == 0
+    assert len(alert_service.partial_fill_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_alert_per_failed_adapter():
+    """Story 4.2: Each failed adapter triggers its own alert."""
+    adapter1 = MockDEXAdapter("dex1", fail=True)
+    adapter2 = MockDEXAdapter("dex2", fail=True)
+    exec_service = MockExecutionService()
+    alert_service = MockAlertService()
+    processor = SignalProcessor([adapter1, adapter2], exec_service, alert_service=alert_service)
+
+    signal = SignalPayload(symbol="ETH/USD", side="buy", size=Decimal("1.0"))
+    await processor.process_signal(signal, "signal-multi-fail")
+
+    await asyncio.sleep(0.05)
+
+    assert len(alert_service.execution_failure_calls) == 2
+    dex_ids = {call["dex_id"] for call in alert_service.execution_failure_calls}
+    assert dex_ids == {"dex1", "dex2"}
+
+
+@pytest.mark.asyncio
+async def test_alert_service_optional():
+    """Story 4.2: AC#7 - System works without alert service (graceful degradation)."""
+    adapter = MockDEXAdapter("extended", fail=True)
+    exec_service = MockExecutionService()
+    # No alert_service provided
+    processor = SignalProcessor([adapter], exec_service)
+
+    signal = SignalPayload(symbol="ETH/USD", side="buy", size=Decimal("1.0"))
+    # Should not raise any errors
+    response = await processor.process_signal(signal, "signal-no-alert")
+
+    assert response.overall_status == "failed"
+    assert response.failed_count == 1
+
+
+@pytest.mark.asyncio
+async def test_partial_fill_alert_sent():
+    """Story 4.2: AC#5 - Alert sent on partial fill.
+
+    Note: In production, partial status comes from WebSocket updates (Story 2.8).
+    This test directly invokes _process_result with a partial status to verify
+    the alert integration works correctly.
+    """
+    exec_service = MockExecutionService()
+    alert_service = MockAlertService()
+    processor = SignalProcessor([], exec_service, alert_service=alert_service)
+
+    # Create a partial fill result directly
+    partial_result = DEXExecutionResult(
+        dex_id="extended",
+        status="partial",
+        order_id="order-123",
+        filled_amount=Decimal("0.3"),
+        error_message=None,
+        latency_ms=50,
+    )
+
+    # Create signal for context
+    signal = SignalPayload(symbol="ETH-PERP", side="buy", size=Decimal("1.0"))
+
+    # Invoke _process_result directly to test the partial fill alert path
+    await processor._process_result(partial_result, "signal-partial", "extended", signal)
+
+    # Allow time for asyncio.create_task to complete
+    await asyncio.sleep(0.05)
+
+    # Verify partial fill alert was sent
+    assert len(alert_service.partial_fill_calls) == 1
+    call = alert_service.partial_fill_calls[0]
+    assert call["symbol"] == "ETH-PERP"
+    assert call["filled_size"] == "0.3"
+    assert call["remaining_size"] == "0.7"  # 1.0 - 0.3 = 0.7
+    assert call["dex_id"] == "extended"
+
+
+@pytest.mark.asyncio
+async def test_no_partial_fill_alert_without_signal():
+    """Story 4.2: No partial fill alert if signal context is missing.
+
+    The partial fill alert requires signal context to calculate remaining size.
+    If signal is None, no alert should be sent.
+    """
+    exec_service = MockExecutionService()
+    alert_service = MockAlertService()
+    processor = SignalProcessor([], exec_service, alert_service=alert_service)
+
+    # Create a partial fill result
+    partial_result = DEXExecutionResult(
+        dex_id="extended",
+        status="partial",
+        order_id="order-123",
+        filled_amount=Decimal("0.3"),
+        error_message=None,
+        latency_ms=50,
+    )
+
+    # Invoke _process_result without signal context
+    await processor._process_result(partial_result, "signal-partial", "extended", None)
+
+    await asyncio.sleep(0.05)
+
+    # No alert should be sent since signal is None
+    assert len(alert_service.partial_fill_calls) == 0

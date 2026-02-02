@@ -20,6 +20,8 @@ import structlog
 from kitkat.adapters.base import DEXAdapter
 from kitkat.adapters.exceptions import DEXRejectionError
 from kitkat.config import get_settings
+from kitkat.logging import ErrorType
+from kitkat.services.error_logger import get_error_logger
 from kitkat.models import (
     ConnectParams,
     HealthStatus,
@@ -103,6 +105,12 @@ class MockAdapter(DEXAdapter):
                     side=side,
                     size=str(size),
                     error=error_msg,
+                )
+                # Story 4.4: Log mock DEX rejection with context
+                get_error_logger().log_dex_error(
+                    dex_id=self.dex_id,
+                    error_type=ErrorType.DEX_REJECTED,
+                    error_message=error_msg,
                 )
                 raise DEXRejectionError(error_msg)
 

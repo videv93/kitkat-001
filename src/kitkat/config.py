@@ -57,6 +57,26 @@ class Settings(BaseSettings):
         description="Grace period in seconds to wait for in-flight orders during shutdown (min: 5, max: 300)",
     )
 
+    # Health Monitoring (Story 4.3)
+    health_check_interval_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Seconds between DEX health checks (NFR4 requirement)",
+    )
+    max_consecutive_failures: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Consecutive failures before marking DEX offline",
+    )
+    reconnect_max_backoff_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        description="Maximum backoff between reconnection attempts",
+    )
+
     # Database
     database_url: str = ""
 

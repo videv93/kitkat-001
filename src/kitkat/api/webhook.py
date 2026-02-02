@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from kitkat.api.deps import get_db_session, verify_webhook_token, get_signal_processor, check_shutdown
 from kitkat.config import get_settings
 from kitkat.models import Signal, SignalPayload, SignalProcessorResponse, DryRunResponse, WouldHaveExecuted
+from kitkat.logging import ErrorType
 from kitkat.services import SignalDeduplicator
+from kitkat.services.error_logger import get_error_logger
 from kitkat.services.signal_processor import SignalProcessor
 from kitkat.services.rate_limiter import RateLimiter
 from kitkat.services.user_service import UserService
@@ -136,6 +138,13 @@ async def webhook_handler(
         user_service = UserService(db)
         user = await user_service.get_user_by_webhook_token(token)
         if not user:
+            # Story 4.4: Log webhook authentication error with context (AC#3)
+            get_error_logger().log_webhook_error(
+                error_type=ErrorType.INVALID_TOKEN,
+                error_message="Invalid webhook token - user not found",
+                webhook_token=token,
+                client_ip=request.client.host if request.client else None,
+            )
             raise HTTPException(
                 status_code=401,
                 detail={"error": "Invalid token", "code": "INVALID_TOKEN"},
@@ -199,6 +208,15 @@ async def webhook_handler(
             "webhook_rate_limited",
             retry_after_seconds=retry_after,
             payload=payload_json,
+        )
+
+        # Story 4.4: Log rate limit error with context (AC#3)
+        get_error_logger().log_webhook_error(
+            error_type=ErrorType.RATE_LIMITED,
+            error_message=f"Rate limit exceeded - retry after {retry_after}s",
+            raw_payload=payload_json,
+            client_ip=request.client.host if request.client else None,
+            webhook_token=token,
         )
 
         return JSONResponse(
@@ -305,6 +323,20 @@ async def webhook_handler(
             user_id=user_id,
         )
         log.error("Signal processing failed", error=str(e))
+
+        # Story 4.4: Log system error with full context (AC#1)
+        get_error_logger().log_system_error(
+            error_type=ErrorType.EXECUTION_FAILED,
+            error_message=f"Signal processing failed: {e}",
+            component="webhook",
+            exception=e,
+            context={
+                "signal_id": signal_id,
+                "symbol": payload.symbol,
+                "side": payload.side,
+            },
+        )
+
         # Return failed response with context for debugging
         return SignalProcessorResponse(
             signal_id=signal_id,

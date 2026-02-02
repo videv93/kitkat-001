@@ -19,7 +19,9 @@ from typing import Optional
 import structlog
 
 from kitkat.adapters.base import DEXAdapter
+from kitkat.logging import ErrorType
 from kitkat.services.alert import TelegramAlertService, send_alert_async
+from kitkat.services.error_logger import get_error_logger
 
 logger = structlog.get_logger()
 
@@ -229,6 +231,18 @@ class HealthMonitor:
             "Health check failed",
             consecutive_failures=failure_count,
             max_failures=self._max_failures,
+        )
+
+        # Story 4.4: Log health check failure with context (AC#1)
+        get_error_logger().log_system_error(
+            error_type=ErrorType.HEALTH_CHECK_FAILED,
+            error_message=error,
+            component="health_monitor",
+            context={
+                "dex_id": dex_id,
+                "consecutive_failures": failure_count,
+                "max_failures": self._max_failures,
+            },
         )
 
         # Determine new status based on failure count (AC#2, AC#4)
