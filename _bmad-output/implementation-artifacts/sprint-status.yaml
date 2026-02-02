@@ -88,7 +88,7 @@ development_status:
   5-3-execution-count-success-rate: review
   5-4-dashboard-endpoint: review
   5-5-onboarding-checklist: in-progress
-  5-6-position-size-configuration: backlog
-  5-7-webhook-url-payload-display: backlog
+  5-6-position-size-configuration: review
+  5-7-webhook-url-payload-display: review
   5-8-telegram-configuration: backlog
   epic-5-retrospective: optional

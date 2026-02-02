@@ -10,8 +10,8 @@ Story 4.2: Sends Telegram alerts on execution failures and partial fills.
 
 import asyncio
 import time
-from decimal import Decimal
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
 import structlog
@@ -72,6 +72,7 @@ class SignalProcessor:
         self,
         signal: SignalPayload,
         signal_id: str,
+        max_position_size: Decimal | None = None,
     ) -> SignalProcessorResponse:
         """Process signal by executing on all active adapters in parallel.
 
@@ -79,15 +80,47 @@ class SignalProcessor:
         adapter calls concurrently. If one adapter fails or times out, others
         continue executing (graceful degradation).
 
+        Story 5.6: If max_position_size is specified and signal.size exceeds it,
+        the signal is rejected without executing on any DEX (AC#5).
+
         Args:
             signal: Validated signal payload (symbol, side, size)
             signal_id: Unique hash for deduplication/correlation
+            max_position_size: Optional user-configured maximum position size.
+                               If signal.size > max_position_size, signal is rejected.
 
         Returns:
             SignalProcessorResponse with per-DEX results and overall status
         """
         log = self._log.bind(signal_id=signal_id)
         log.info("Processing signal", symbol=signal.symbol, side=signal.side)
+
+        # Story 5.6: Position size validation (AC#5)
+        if max_position_size is not None and signal.size > max_position_size:
+            log.warning(
+                "Signal size exceeds configured maximum",
+                signal_size=str(signal.size),
+                max_allowed=str(max_position_size),
+            )
+            # Return rejection response - signal is logged but NOT executed
+            return SignalProcessorResponse(
+                signal_id=signal_id,
+                overall_status="rejected",
+                results=[
+                    DEXExecutionResult(
+                        dex_id="system",
+                        status="rejected",
+                        order_id=None,
+                        filled_amount=Decimal("0"),
+                        error_message=f"Position size {signal.size} exceeds configured maximum {max_position_size}",
+                        latency_ms=0,
+                    )
+                ],
+                total_dex_count=0,
+                successful_count=0,
+                failed_count=0,
+                timestamp=datetime.now(timezone.utc),
+            )
 
         active_adapters = self.get_active_adapters()
         if not active_adapters:
@@ -112,11 +145,12 @@ class SignalProcessor:
         # 30 second timeout per signal to prevent indefinite hangs
         try:
             raw_results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=30.0
+                asyncio.gather(*tasks, return_exceptions=True), timeout=30.0
             )
         except asyncio.TimeoutError:
-            log.error("Signal processing timeout - some adapters did not complete in time")
+            log.error(
+                "Signal processing timeout - some adapters did not complete in time"
+            )
             return SignalProcessorResponse(
                 signal_id=signal_id,
                 overall_status="failed",
@@ -130,11 +164,15 @@ class SignalProcessor:
         # Process results and log to ExecutionService
         processed_results = []
         for adapter, result in zip(active_adapters, raw_results):
-            processed = await self._process_result(result, signal_id, adapter.dex_id, signal)
+            processed = await self._process_result(
+                result, signal_id, adapter.dex_id, signal
+            )
             processed_results.append(processed)
 
         # Calculate overall status
-        successful = sum(1 for r in processed_results if r.status in ("filled", "partial"))
+        successful = sum(
+            1 for r in processed_results if r.status in ("filled", "partial")
+        )
         failed = sum(1 for r in processed_results if r.status in ("failed", "error"))
 
         if successful == len(processed_results):
@@ -178,7 +216,12 @@ class SignalProcessor:
             DEXExecutionResult with execution status and latency
         """
         log = self._log.bind(signal_id=signal_id, dex_id=adapter.dex_id)
-        log.info("Executing on DEX", symbol=signal.symbol, side=signal.side, size=str(signal.size))
+        log.info(
+            "Executing on DEX",
+            symbol=signal.symbol,
+            side=signal.side,
+            size=str(signal.size),
+        )
 
         start_time = time.perf_counter()
         try:

@@ -415,7 +415,7 @@ class TradingViewSetup(BaseModel):
 
 
 class WebhookConfigResponse(BaseModel):
-    """Response for webhook configuration endpoint."""
+    """Response for webhook configuration endpoint (Story 5.7)."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -423,6 +423,10 @@ class WebhookConfigResponse(BaseModel):
     payload_format: PayloadFormat = Field(..., description="Payload format specification")
     tradingview_setup: TradingViewSetup = Field(
         ..., description="TradingView setup instructions"
+    )
+    token_display: str = Field(
+        ...,
+        description="Abbreviated token for display (first 8 chars + '...') - AC#5",
     )
 
 
@@ -486,8 +490,8 @@ class DEXExecutionResult(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     dex_id: str = Field(..., description="DEX identifier (e.g., 'extended', 'mock')")
-    status: Literal["filled", "partial", "failed", "error"] = Field(
-        ..., description="Execution status"
+    status: Literal["filled", "partial", "failed", "error", "rejected"] = Field(
+        ..., description="Execution status (rejected if position size exceeded)"
     )
     order_id: str | None = Field(None, description="DEX-assigned order ID (None on failure)")
     filled_amount: Decimal = Field(
@@ -503,8 +507,8 @@ class SignalProcessorResponse(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     signal_id: str = Field(..., description="Signal hash for correlation")
-    overall_status: Literal["success", "partial", "failed"] = Field(
-        ..., description="Aggregate status across all DEXs"
+    overall_status: Literal["success", "partial", "failed", "rejected"] = Field(
+        ..., description="Aggregate status across all DEXs (rejected if position size exceeded)"
     )
     results: list[DEXExecutionResult] = Field(
         ..., description="Per-DEX execution results"
@@ -878,4 +882,56 @@ class OnboardingResponse(BaseModel):
     progress: str = Field(..., description="Progress as 'X/5' format")
     steps: list[OnboardingStep] = Field(
         ..., description="All onboarding steps with status"
+    )
+
+
+# ============================================================================
+# Position Size Configuration Models (Story 5.6)
+# ============================================================================
+
+
+class PositionSizeConfig(BaseModel):
+    """Response for GET /api/config endpoint (Story 5.6: AC#1).
+
+    Shows user's current position size configuration with defaults applied
+    if not explicitly configured. Values are stored and returned as strings
+    to preserve decimal precision.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    position_size: str = Field(
+        ..., description="Position size per trade (e.g., '0.5')"
+    )
+    max_position_size: str = Field(
+        ..., description="Maximum allowed position size (e.g., '10.0')"
+    )
+    position_size_unit: str = Field(
+        default="ETH", description="Unit for position sizes"
+    )
+
+
+class PositionSizeUpdate(BaseModel):
+    """Request body for PUT /api/config endpoint (Story 5.6: AC#2).
+
+    Allows updating position size settings. Both fields are optional -
+    only provided fields are updated.
+
+    Validation rules (Story 5.6: AC#3, AC#4):
+    - position_size must be > 0
+    - max_position_size must be > 0 and <= 100 (system limit)
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    position_size: Decimal | None = Field(
+        default=None,
+        gt=0,
+        description="New position size per trade (must be > 0)"
+    )
+    max_position_size: Decimal | None = Field(
+        default=None,
+        gt=0,
+        le=100,
+        description="New maximum position size (must be > 0 and <= 100)"
     )

@@ -2,24 +2,36 @@
 
 import hashlib
 from datetime import datetime, timezone
+from decimal import Decimal
 from hmac import compare_digest
 from typing import Literal, Optional, Union
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from kitkat.api.deps import get_db_session, verify_webhook_token, get_signal_processor, check_shutdown
+from kitkat.api.deps import (
+    check_shutdown,
+    get_db_session,
+    get_signal_processor,
+    verify_webhook_token,
+)
 from kitkat.config import get_settings
-from kitkat.models import Signal, SignalPayload, SignalProcessorResponse, DryRunResponse, WouldHaveExecuted
 from kitkat.logging import ErrorType
+from kitkat.models import (
+    DryRunResponse,
+    Signal,
+    SignalPayload,
+    SignalProcessorResponse,
+    WouldHaveExecuted,
+)
 from kitkat.services import SignalDeduplicator
 from kitkat.services.error_logger import get_error_logger
-from kitkat.services.signal_processor import SignalProcessor
 from kitkat.services.rate_limiter import RateLimiter
-from kitkat.services.user_service import UserService
+from kitkat.services.signal_processor import SignalProcessor
+from kitkat.services.user_service import DEFAULT_USER_CONFIG, UserService
 
 logger = structlog.get_logger()
 
@@ -128,13 +140,14 @@ async def webhook_handler(
     # Story 2.4: Check if this is a user-specific webhook token (not X-Webhook-Token)
     # If token is not the system token, validate it against user webhook tokens
     settings = get_settings()
-    is_user_webhook = False
     user_id: Optional[int] = None
 
     # Try to find user by webhook token (Story 2.4: AC3)
+    # Story 5.6: Also get user's max_position_size for validation (AC#5)
+    user_max_position_size: Optional[Decimal] = None
+
     if not compare_digest(token, settings.webhook_token):
         # This is a user webhook token, not the system token
-        is_user_webhook = True
         user_service = UserService(db)
         user = await user_service.get_user_by_webhook_token(token)
         if not user:
@@ -151,6 +164,16 @@ async def webhook_handler(
             )
         user_id = user.id
         log_user = user.wallet_address[:WALLET_ADDRESS_DISPLAY_LENGTH]
+
+        # Story 5.6: Extract max_position_size from user config (AC#5)
+        config_data = user.config_data or {}
+        max_size_str = config_data.get(
+            "max_position_size", DEFAULT_USER_CONFIG.get("max_position_size", "10.0")
+        )
+        try:
+            user_max_position_size = Decimal(str(max_size_str))
+        except (ValueError, TypeError):
+            user_max_position_size = Decimal("10.0")  # Fallback to default
     else:
         log_user = "system"
 
@@ -189,9 +212,7 @@ async def webhook_handler(
         )
 
     # Get rate limiter from app state (Story 1.6)
-    rate_limiter: RateLimiter | None = getattr(
-        request.app.state, "rate_limiter", None
-    )
+    rate_limiter: RateLimiter | None = getattr(request.app.state, "rate_limiter", None)
 
     # Check rate limit (Story 1.6, AC2)
     # Rate limit check happens AFTER deduplication, so duplicates don't count
@@ -261,12 +282,17 @@ async def webhook_handler(
     # Story 3.3: Return DryRunResponse if test_mode=true
     # Returns per-DEX execution results and overall status
     try:
+        # Story 5.6: Pass max_position_size for validation (AC#5)
         if shutdown_manager:
             async with shutdown_manager.track_in_flight(signal_id):
-                response = await signal_processor.process_signal(payload, signal_id)
+                response = await signal_processor.process_signal(
+                    payload, signal_id, max_position_size=user_max_position_size
+                )
         else:
             # Fallback for tests without shutdown manager
-            response = await signal_processor.process_signal(payload, signal_id)
+            response = await signal_processor.process_signal(
+                payload, signal_id, max_position_size=user_max_position_size
+            )
 
         # Story 3.3: Check test_mode and return appropriate response format (AC#1, #2)
         if settings.test_mode:
@@ -277,19 +303,25 @@ async def webhook_handler(
             would_have = []
             for result in response.results:
                 # Include all executions (success and error) - AC#3 requires error responses unchanged
-                would_have.append(WouldHaveExecuted(
-                    dex=result.dex_id,
-                    symbol=payload.symbol,
-                    side=payload.side,
-                    size=payload.size,
-                    simulated_result={
-                        "order_id": result.order_id,
-                        "status": "submitted" if result.status != "error" else "failed",
-                        "fill_price": str(result.filled_amount) if result.status != "error" else None,
-                        "submitted_at": response_time.isoformat(),
-                        "error_message": result.error_message,  # Include error details if present
-                    }
-                ))
+                would_have.append(
+                    WouldHaveExecuted(
+                        dex=result.dex_id,
+                        symbol=payload.symbol,
+                        side=payload.side,
+                        size=payload.size,
+                        simulated_result={
+                            "order_id": result.order_id,
+                            "status": "submitted"
+                            if result.status != "error"
+                            else "failed",
+                            "fill_price": str(result.filled_amount)
+                            if result.status != "error"
+                            else None,
+                            "submitted_at": response_time.isoformat(),
+                            "error_message": result.error_message,  # Include error details if present
+                        },
+                    )
+                )
 
             # Log dry-run response (AC#2)
             log = logger.bind(

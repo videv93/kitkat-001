@@ -16,8 +16,8 @@ from kitkat.main import app
 @pytest.fixture(autouse=True)
 def reset_singletons():
     """Reset settings and signal processor singletons before each test."""
-    import kitkat.config
     import kitkat.api.deps
+    import kitkat.config
 
     kitkat.config._settings_instance = None
     kitkat.api.deps._signal_processor = None
@@ -130,8 +130,8 @@ def client():
 @pytest.fixture
 async def authenticated_user_and_token(db_session: AsyncSession):
     """Create authenticated user with session and return token and user info."""
-    from kitkat.services.user_service import UserService
     from kitkat.services.session_service import SessionService
+    from kitkat.services.user_service import UserService
 
     user_service = UserService(db_session)
     session_service = SessionService(db_session)
@@ -157,8 +157,8 @@ async def test_user_session_headers(
     db_session: AsyncSession, client: TestClient
 ) -> dict:
     """Provide Authorization header with valid session token."""
-    from kitkat.services.user_service import UserService
     from kitkat.services.session_service import SessionService
+    from kitkat.services.user_service import UserService
 
     user_service = UserService(db_session)
     session_service = SessionService(db_session)
@@ -172,3 +172,40 @@ async def test_user_session_headers(
     session = await session_service.create_session(user.wallet_address)
 
     return {"Authorization": f"Bearer {session.token}"}
+
+
+@pytest.fixture
+async def async_client():
+    """Provide async HTTP client for testing FastAPI endpoints."""
+    from httpx import ASGITransport, AsyncClient
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        yield client
+
+
+@pytest.fixture
+async def authenticated_user(db_session: AsyncSession):
+    """Create authenticated user and return user info with token."""
+    from kitkat.services.session_service import SessionService
+    from kitkat.services.user_service import UserService
+
+    user_service = UserService(db_session)
+    session_service = SessionService(db_session)
+
+    # Create user
+    user = await user_service.create_user(
+        wallet_address="0x742d35Cc6634C0532925a3b844Bc9e7595f6bEd0"
+    )
+
+    # Create session
+    session = await session_service.create_session(user.wallet_address)
+
+    return {
+        "user_id": user.id,
+        "wallet_address": user.wallet_address,
+        "webhook_token": user.webhook_token,
+        "token": session.token,  # Session token for auth header
+    }

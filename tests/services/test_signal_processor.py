@@ -568,3 +568,146 @@ async def test_no_partial_fill_alert_without_signal():
 
     # No alert should be sent since signal is None
     assert len(alert_service.partial_fill_calls) == 0
+
+
+# ============================================================================
+# Story 5.6: Position Size Validation Tests (AC#5)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_signal_rejected_when_size_exceeds_max():
+    """Story 5.6: AC#5 - Signal rejected if size > max_position_size."""
+    adapter = MockDEXAdapter("extended", delay_ms=10)
+    exec_service = MockExecutionService()
+    processor = SignalProcessor([adapter], exec_service)
+
+    signal = SignalPayload(
+        symbol="ETH-PERP",
+        side="buy",
+        size=Decimal("15.0"),  # Exceeds limit of 5.0
+    )
+
+    # Process with max_position_size constraint
+    response = await processor.process_signal(
+        signal=signal,
+        signal_id="signal-size-exceed",
+        max_position_size=Decimal("5.0"),
+    )
+
+    # Should be rejected
+    assert response.overall_status == "rejected"
+    assert response.signal_id == "signal-size-exceed"
+
+    # DEX adapter should NOT be called
+    assert len(adapter.execute_order_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_signal_rejected_returns_correct_error_message():
+    """Story 5.6: AC#5 - Rejected signal includes error message."""
+    adapter = MockDEXAdapter("extended")
+    exec_service = MockExecutionService()
+    processor = SignalProcessor([adapter], exec_service)
+
+    signal = SignalPayload(
+        symbol="BTC-PERP",
+        side="sell",
+        size=Decimal("100.0"),  # Exceeds limit
+    )
+
+    response = await processor.process_signal(
+        signal=signal,
+        signal_id="signal-reject-msg",
+        max_position_size=Decimal("10.0"),
+    )
+
+    assert response.overall_status == "rejected"
+    # Check that rejection is logged in results
+    assert len(response.results) == 1
+    assert response.results[0].status == "rejected"
+    assert "exceeds configured maximum" in response.results[0].error_message.lower()
+
+
+@pytest.mark.asyncio
+async def test_signal_rejected_logged_not_executed():
+    """Story 5.6: AC#5 - Rejected signal is logged but NOT executed on DEX."""
+    adapter1 = MockDEXAdapter("extended")
+    adapter2 = MockDEXAdapter("mock")
+    exec_service = MockExecutionService()
+    processor = SignalProcessor([adapter1, adapter2], exec_service)
+
+    signal = SignalPayload(
+        symbol="ETH-PERP",
+        side="buy",
+        size=Decimal("50.0"),  # Exceeds limit
+    )
+
+    response = await processor.process_signal(
+        signal=signal,
+        signal_id="signal-no-exec",
+        max_position_size=Decimal("10.0"),
+    )
+
+    # Rejection should be recorded
+    assert response.overall_status == "rejected"
+
+    # NO adapters should have been called
+    assert len(adapter1.execute_order_calls) == 0
+    assert len(adapter2.execute_order_calls) == 0
+
+    # Execution service should NOT have logged normal executions
+    # (only the rejection should be tracked)
+    assert len(exec_service.log_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_signal_accepted_when_size_within_limit():
+    """Story 5.6: Signal processed normally when size <= max_position_size."""
+    adapter = MockDEXAdapter("extended")
+    exec_service = MockExecutionService()
+    processor = SignalProcessor([adapter], exec_service)
+
+    signal = SignalPayload(
+        symbol="ETH-PERP",
+        side="buy",
+        size=Decimal("5.0"),  # Exactly at limit
+    )
+
+    response = await processor.process_signal(
+        signal=signal,
+        signal_id="signal-within-limit",
+        max_position_size=Decimal("5.0"),
+    )
+
+    # Should be processed normally
+    assert response.overall_status == "success"
+
+    # Adapter should have been called
+    assert len(adapter.execute_order_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_signal_processed_without_max_position_size():
+    """Story 5.6: Signal processed normally when no max_position_size specified."""
+    adapter = MockDEXAdapter("extended")
+    exec_service = MockExecutionService()
+    processor = SignalProcessor([adapter], exec_service)
+
+    signal = SignalPayload(
+        symbol="ETH-PERP",
+        side="buy",
+        size=Decimal("1000.0"),  # Large size, no limit
+    )
+
+    # Process without max_position_size (backwards compatibility)
+    response = await processor.process_signal(
+        signal=signal,
+        signal_id="signal-no-limit",
+    )
+
+    # Should be processed normally
+    assert response.overall_status == "success"
+
+    # Adapter should have been called
+    assert len(adapter.execute_order_calls) == 1
