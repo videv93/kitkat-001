@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -12,18 +13,27 @@ from sqlalchemy import text
 
 from kitkat.api.auth import router as auth_router
 from kitkat.api.config import router as config_router
+from kitkat.api.errors import router as errors_router
 from kitkat.api.executions import router as executions_router
 from kitkat.api.health import router as health_router
 from kitkat.api.sessions import router as sessions_router
+from kitkat.api.stats import router as stats_router
 from kitkat.api.users import router as users_router
 from kitkat.api.wallet import router as wallet_router
 from kitkat.api.webhook import router as webhook_router
 from kitkat.config import get_settings
 from kitkat.database import Base, get_async_session_factory, get_engine
+from kitkat.logging import configure_logging
 from kitkat.services import ShutdownManager, SignalDeduplicator
 from kitkat.services.health_monitor import HealthMonitor
 from kitkat.services.rate_limiter import RateLimiter
 from kitkat.services.signature_verifier import get_signature_verifier
+
+# Story 4.4: Configure structured JSON logging (AC#4)
+# Use JSON output for production (container-friendly), console for development
+# LOG_FORMAT env var can override: "json" or "console"
+_log_format = os.environ.get("LOG_FORMAT", "json").lower()
+configure_logging(json_output=(_log_format != "console"))
 
 logger = structlog.get_logger()
 
@@ -143,6 +153,23 @@ async def lifespan(app: FastAPI):
     if settings.test_mode:
         logger.info("Test mode ENABLED - no real trades will be executed")
 
+    # Story 4.5: Run error log cleanup on startup (AC#6)
+    try:
+        from kitkat.services.error_log import ErrorLogService
+
+        factory = get_async_session_factory()
+        async with factory() as session:
+            service = ErrorLogService(session)
+            deleted_count = await service.cleanup_old_errors()
+            if deleted_count > 0:
+                logger.info(
+                    "Error log cleanup completed",
+                    deleted_count=deleted_count,
+                    retention_days=90,
+                )
+    except Exception as e:
+        logger.warning("Error log cleanup failed on startup", error=str(e))
+
     yield
 
     # Shutdown sequence (Story 2.11)
@@ -211,6 +238,10 @@ app.include_router(auth_router)
 app.include_router(config_router)
 # Story 3.3: Execution history with test mode filtering
 app.include_router(executions_router)
+# Story 5.2: Volume display endpoints
+app.include_router(stats_router)
+# Story 4.5: Error log viewer endpoint
+app.include_router(errors_router)
 
 
 @app.exception_handler(RequestValidationError)
