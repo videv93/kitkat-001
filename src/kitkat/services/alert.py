@@ -367,6 +367,47 @@ class TelegramAlertService:
                 exception=e,
             )
 
+    async def send_test_message(self) -> bool:
+        """Send a test message to verify Telegram configuration (Story 5.8: AC#3).
+
+        Used during configuration to verify the chat_id is valid and the bot
+        can send messages to it. Unlike regular alerts, this method returns
+        a success/failure boolean for configuration validation.
+
+        Returns:
+            True if message sent successfully, False otherwise.
+        """
+        if not self._bot:
+            self._log.warning("Cannot send test message - bot not configured")
+            return False
+
+        if not self._chat_id:
+            self._log.warning("Cannot send test message - chat_id not set")
+            return False
+
+        try:
+            await self._bot.send_message(
+                chat_id=self._chat_id,
+                text="✅ kitkat-001 alerts configured successfully!",
+            )
+            self._log.info("Test message sent successfully", chat_id=self._chat_id)
+            return True
+        except TelegramError as e:
+            self._log.warning(
+                "Test message failed",
+                chat_id=self._chat_id,
+                error=str(e),
+            )
+            return False
+        except Exception as e:
+            self._log.warning(
+                "Unexpected error sending test message",
+                chat_id=self._chat_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return False
+
 
 def send_alert_async(alert_service: TelegramAlertService, coro) -> None:
     """Fire-and-forget wrapper for alert sending (AC#4).

@@ -1,4 +1,4 @@
-"""User configuration endpoints (Story 2.4: Webhook URL Generation, Story 5.6: Position Size)."""
+"""User configuration endpoints (Story 2.4: Webhook URL Generation, Story 5.6: Position Size, Story 5.8: Telegram)."""
 
 import json
 from decimal import Decimal
@@ -9,15 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import structlog
 from kitkat.api.deps import get_current_user, get_db
+from kitkat.config import get_settings
 from kitkat.database import UserModel
 from kitkat.models import (
     CurrentUser,
     PayloadFormat,
     PositionSizeConfig,
     PositionSizeUpdate,
+    TelegramConfigResponse,
+    TelegramConfigUpdate,
     TradingViewSetup,
     WebhookConfigResponse,
 )
+from kitkat.services.alert import TelegramAlertService
 
 logger = structlog.get_logger()
 
@@ -308,4 +312,181 @@ async def update_config(
         position_size=str(new_position_size),
         max_position_size=str(new_max_size),
         position_size_unit="ETH",
+    )
+
+
+# ============================================================================
+# Telegram Configuration Endpoints (Story 5.8)
+# ============================================================================
+
+
+# Setup instructions for unconfigured users
+TELEGRAM_SETUP_INSTRUCTIONS = (
+    "To configure Telegram alerts:\n"
+    "1. Start a chat with the kitkat-001 bot on Telegram\n"
+    "2. Send /start to the bot\n"
+    "3. Copy your chat ID from the bot's response\n"
+    "4. Use PUT /api/config/telegram with your chat_id"
+)
+
+
+@router.get("/telegram", response_model=TelegramConfigResponse)
+async def get_telegram_config(
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TelegramConfigResponse:
+    """Retrieve Telegram configuration for authenticated user (Story 5.8: AC#1, #5).
+
+    Returns:
+        TelegramConfigResponse with current configuration status
+
+    Raises:
+        HTTPException: 401 if user not authenticated (handled by get_current_user)
+        HTTPException: 404 if user not found in database
+    """
+    wallet_display = current_user.wallet_address[:WALLET_ADDRESS_DISPLAY_LENGTH]
+    log = logger.bind(user=wallet_display)
+    log.debug("Fetching telegram config")
+
+    # Query user's config_data
+    query = select(UserModel).where(
+        UserModel.wallet_address == current_user.wallet_address
+    )
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        log.error("Authenticated user not found in database")
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Parse config_data
+    if isinstance(user.config_data, str):
+        try:
+            config_data = json.loads(user.config_data)
+        except (json.JSONDecodeError, TypeError):
+            config_data = {}
+    else:
+        config_data = dict(user.config_data) if user.config_data else {}
+
+    # Check user's telegram configuration
+    chat_id = config_data.get("telegram_chat_id")
+    configured = bool(chat_id)
+
+    # Check if bot token is configured system-wide (AC#6)
+    settings = get_settings()
+    bot_configured = bool(settings.telegram_bot_token)
+
+    # Determine bot status
+    if not bot_configured:
+        bot_status = "not_configured"
+    else:
+        bot_status = "connected"  # Assume connected if token exists
+
+    # Setup instructions when not configured (AC#5)
+    setup_instructions = None if configured else TELEGRAM_SETUP_INSTRUCTIONS
+
+    log.info(
+        "Telegram config retrieved",
+        configured=configured,
+        bot_status=bot_status,
+    )
+
+    return TelegramConfigResponse(
+        configured=configured,
+        chat_id=chat_id,
+        bot_status=bot_status,
+        test_available=bot_configured,
+        setup_instructions=setup_instructions,
+    )
+
+
+@router.put("/telegram", response_model=TelegramConfigResponse)
+async def update_telegram_config(
+    config_update: TelegramConfigUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> TelegramConfigResponse:
+    """Update Telegram configuration for authenticated user (Story 5.8: AC#2, #3, #4).
+
+    Sends a test message before saving. If test fails, config is NOT saved.
+
+    Returns:
+        TelegramConfigResponse with updated configuration
+
+    Raises:
+        HTTPException: 400 if test message fails (invalid chat_id)
+        HTTPException: 401 if user not authenticated
+        HTTPException: 404 if user not found
+        HTTPException: 503 if bot token not configured on server
+    """
+    wallet_display = current_user.wallet_address[:WALLET_ADDRESS_DISPLAY_LENGTH]
+    log = logger.bind(user=wallet_display, chat_id=config_update.chat_id)
+    log.debug("Updating telegram config")
+
+    # Check bot token is configured (AC#6 - system-wide token)
+    settings = get_settings()
+    if not settings.telegram_bot_token:
+        log.warning("Telegram bot token not configured on server")
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram bot not configured on server"
+        )
+
+    # Query user from database
+    query = select(UserModel).where(
+        UserModel.wallet_address == current_user.wallet_address
+    )
+    result = await db.execute(query)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        log.error("Authenticated user not found in database")
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Send test message to verify chat_id (AC#3)
+    alert_service = TelegramAlertService(
+        bot_token=settings.telegram_bot_token,
+        chat_id=config_update.chat_id,
+    )
+
+    test_success = await alert_service.send_test_message()
+
+    if not test_success:
+        # AC#4: Test failed - do NOT save config
+        log.warning("Test message failed", chat_id=config_update.chat_id)
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to send test message - check chat ID"
+        )
+
+    # Test succeeded - save configuration (AC#2)
+    # Parse current config_data
+    if isinstance(user.config_data, str):
+        try:
+            config_data = json.loads(user.config_data)
+        except (json.JSONDecodeError, TypeError):
+            config_data = {}
+    else:
+        config_data = dict(user.config_data) if user.config_data else {}
+
+    # Update with new telegram_chat_id
+    config_data["telegram_chat_id"] = config_update.chat_id
+
+    # Save to database
+    update_stmt = (
+        update(UserModel)
+        .where(UserModel.wallet_address == current_user.wallet_address)
+        .values(config_data=json.dumps(config_data))
+    )
+    await db.execute(update_stmt)
+    await db.commit()
+
+    log.info("Telegram configuration updated successfully")
+
+    return TelegramConfigResponse(
+        configured=True,
+        chat_id=config_update.chat_id,
+        bot_status="connected",
+        test_available=True,
+        setup_instructions=None,
     )

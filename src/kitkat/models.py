@@ -935,3 +935,56 @@ class PositionSizeUpdate(BaseModel):
         le=100,
         description="New maximum position size (must be > 0 and <= 100)"
     )
+
+
+# ============================================================================
+# Telegram Configuration Models (Story 5.8)
+# ============================================================================
+
+
+class TelegramConfigResponse(BaseModel):
+    """Response for GET /api/config/telegram endpoint (Story 5.8: AC#1, #5).
+
+    Shows user's Telegram configuration status including whether alerts
+    are configured, the chat ID (if set), bot connection status, and
+    setup instructions for unconfigured users.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    configured: bool = Field(
+        ...,
+        description="Whether Telegram alerts are configured for this user"
+    )
+    chat_id: Optional[str] = Field(
+        default=None,
+        description="User's Telegram chat ID (null if not configured)"
+    )
+    bot_status: Literal["connected", "not_configured", "error"] = Field(
+        ...,
+        description="Bot connection status: 'connected', 'not_configured', or 'error'"
+    )
+    test_available: bool = Field(
+        ...,
+        description="Whether test message can be sent (bot token configured)"
+    )
+    setup_instructions: Optional[str] = Field(
+        default=None,
+        description="Instructions for setting up Telegram (shown when not configured)"
+    )
+
+
+class TelegramConfigUpdate(BaseModel):
+    """Request body for PUT /api/config/telegram endpoint (Story 5.8: AC#2).
+
+    Allows users to set their Telegram chat ID for receiving alerts.
+    A test message is sent to verify the configuration before saving.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    chat_id: str = Field(
+        ...,
+        min_length=1,
+        description="Telegram chat ID to receive alerts"
+    )
