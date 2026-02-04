@@ -115,9 +115,17 @@ class Settings(BaseSettings):
         """Initialize settings with computed defaults."""
         super().__init__(**data)
         # Use absolute path for database if not overridden
+        # Default to /tmp for Railway/container deployments (ephemeral)
+        # Set DATABASE_URL env var for persistent storage
         if not self.database_url:
-            db_path = Path(__file__).parent.parent.parent / "kitkat.db"
-            self.database_url = f"sqlite+aiosqlite:///{db_path}"
+            import os
+            if os.environ.get("RAILWAY_ENVIRONMENT"):
+                # Railway deployment - use /tmp (ephemeral)
+                self.database_url = "sqlite+aiosqlite:////tmp/kitkat.db"
+            else:
+                # Local development - use project root
+                db_path = Path(__file__).parent.parent.parent / "kitkat.db"
+                self.database_url = f"sqlite+aiosqlite:///{db_path}"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
