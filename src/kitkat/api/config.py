@@ -87,7 +87,7 @@ async def get_webhook_config(
     db: AsyncSession = Depends(get_db),
 ) -> WebhookConfigResponse:
     """
-    Retrieve webhook URL and configuration for authenticated user (Story 2.4: AC2).
+    Retrieve webhook URL and configuration for authenticated user (Story 2.4, 5.7).
 
     Returns:
         WebhookConfigResponse: Webhook URL and payload format documentation
@@ -117,14 +117,14 @@ async def get_webhook_config(
     # Build webhook URL with proper scheme
     webhook_url = f"{scheme}://{host}/api/webhook?token={current_user.webhook_token}"
 
-    # Define payload format
+    # Define payload format (AC#3: required vs optional fields with working example)
     payload_format = PayloadFormat(
         required_fields=["symbol", "side", "size"],
         optional_fields=["price", "order_type"],
         example={
             "symbol": "ETH-PERP",
             "side": "buy",
-            "size": "0.5",
+            "size": "{{strategy.position_size}}",  # TradingView placeholder syntax
         },
     )
 
@@ -146,7 +146,7 @@ async def get_webhook_config(
         token_display=token_display,
     )
 
-    log.info("Webhook config retrieved", webhook_url_prefix=webhook_url[:50])
+    log.info("Webhook config retrieved")
     return response
 
 

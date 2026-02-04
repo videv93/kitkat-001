@@ -1,6 +1,6 @@
 # Story 5.7: Webhook URL & Payload Display
 
-Status: review
+Status: done
 
 ## Story
 
@@ -334,8 +334,20 @@ N/A - No debugging issues encountered.
 **Modified Files:**
 - `src/kitkat/models.py` - Added `token_display` field to `WebhookConfigResponse` model
 - `src/kitkat/api/config.py` - Added token abbreviation calculation to `get_webhook_config` endpoint
+- `tests/api/test_config.py` - Added 5 webhook config tests for Story 5.7 ACs
 
 ### Change Log
 
+- 2026-02-04: **Code Review PASSED** - All issues fixed:
+  - C1: Committed all previously uncommitted code review fixes
+  - M1: Fixed example payload to use TradingView placeholder syntax `{{strategy.position_size}}`
+  - M2: Added test assertions to verify TradingView placeholder values
+  - L2: Updated docstring to reference Story 5.7
+  - Fixed test mocking to use FastAPI dependency_overrides instead of patch
+- 2026-02-03: Code review fixes applied:
+  - Added missing test for 500 error when webhook_token not configured (H1)
+  - Fixed test edge case handling for short webhook tokens (H2)
+  - Removed partial token exposure from log output (M2)
+  - Updated File List to include test file (M1)
 - 2026-02-02: Story 5.7 implementation completed - Added token_display field for abbreviated webhook token display
 

@@ -1,6 +1,6 @@
 # Story 5.6: Position Size Configuration
 
-Status: review
+Status: done
 
 ## Story
 
@@ -756,6 +756,7 @@ N/A - No significant debugging issues encountered.
 - `tests/api/test_config.py` - Configuration API endpoint tests
 
 **Modified Files:**
+- `src/kitkat/api/config.py` - Position size configuration endpoints (GET/PUT /api/config)
 - `src/kitkat/models.py` - Added "rejected" status to DEXExecutionResult and SignalProcessorResponse
 - `src/kitkat/services/signal_processor.py` - Added max_position_size validation
 - `src/kitkat/api/webhook.py` - Extract user max_position_size and pass to signal processor
@@ -764,5 +765,8 @@ N/A - No significant debugging issues encountered.
 
 ### Change Log
 
+- 2026-02-04: **Code Review PASSED** - Minor issues fixed:
+  - M1: Added boundary test for position_size == max_position_size
+  - L1: Updated File List to include src/kitkat/api/config.py
 - 2026-02-02: Story 5.6 implementation completed - Position size configuration with validation
 

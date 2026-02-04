@@ -74,21 +74,21 @@ development_status:
 
   # Epic 4: System Monitoring & Alerting
   epic-4: in-progress
-  4-1-health-service-dex-status: review
+  4-1-health-service-dex-status: done
   4-2-telegram-alert-service: done
-  4-3-auto-recovery-after-outage: review
+  4-3-auto-recovery-after-outage: done
   4-4-error-logging-with-full-context: done
-  4-5-error-log-viewer: review
+  4-5-error-log-viewer: done
   epic-4-retrospective: optional
 
   # Epic 5: Dashboard, Volume Stats & Configuration
   epic-5: in-progress
-  5-1-stats-service-volume-tracking: review
-  5-2-volume-display-today-week: review
-  5-3-execution-count-success-rate: review
-  5-4-dashboard-endpoint: review
-  5-5-onboarding-checklist: review
-  5-6-position-size-configuration: review
-  5-7-webhook-url-payload-display: review
+  5-1-stats-service-volume-tracking: done
+  5-2-volume-display-today-week: done
+  5-3-execution-count-success-rate: done
+  5-4-dashboard-endpoint: done
+  5-5-onboarding-checklist: done
+  5-6-position-size-configuration: done
+  5-7-webhook-url-payload-display: done
   5-8-telegram-configuration: done
   epic-5-retrospective: optional

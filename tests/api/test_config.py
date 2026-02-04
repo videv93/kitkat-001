@@ -49,7 +49,7 @@ async def test_webhook_config_token_display_abbreviated(
     async_client: AsyncClient,
     authenticated_user,
 ):
-    """Test AC#5: token_display shows first 8 chars + '...'"""
+    """Test AC#5: token_display shows first 8 chars + '...' for tokens longer than 8 chars."""
     response = await async_client.get(
         "/api/config/webhook",
         headers={"Authorization": f"Bearer {authenticated_user['token']}"},
@@ -57,15 +57,18 @@ async def test_webhook_config_token_display_abbreviated(
     assert response.status_code == 200
     data = response.json()
 
-    # Token display should be abbreviated
-    token_display = data["token_display"]
-    assert token_display.endswith("...")
-    assert len(token_display) == 11  # 8 chars + "..."
-
-    # Full token should be in webhook_url (extractable)
+    # Extract full token from webhook_url
     full_token = data["webhook_url"].split("token=")[1]
-    assert len(full_token) > 11  # Full token is longer than abbreviated
-    assert token_display[:8] == full_token[:8]  # First 8 chars match
+    token_display = data["token_display"]
+
+    # For tokens > 8 chars: should be abbreviated with "..."
+    if len(full_token) > 8:
+        assert token_display.endswith("...")
+        assert len(token_display) == 11  # 8 chars + "..."
+        assert token_display[:8] == full_token[:8]  # First 8 chars match
+    else:
+        # For short tokens (≤8 chars): full token returned without "..."
+        assert token_display == full_token
 
 
 @pytest.mark.asyncio
@@ -78,11 +81,51 @@ async def test_webhook_config_requires_authentication(
 
 
 @pytest.mark.asyncio
+async def test_webhook_config_500_when_token_not_configured(
+    async_client: AsyncClient,
+    authenticated_user,
+):
+    """Test Task 5.6: Returns 500 when user has no webhook_token configured.
+
+    Note: The database schema has NOT NULL on webhook_token, so we must use
+    FastAPI's dependency_overrides to simulate this edge case. The error
+    handling code exists as a defensive measure.
+    """
+    from kitkat.api.deps import get_current_user
+    from kitkat.main import app
+    from kitkat.models import CurrentUser
+
+    # Create a mock CurrentUser with empty webhook_token
+    mock_user = CurrentUser(
+        wallet_address="0x1234567890123456789012345678901234567890",
+        session_id=1,
+        webhook_token="",  # Empty string triggers the check
+    )
+
+    # Use FastAPI's dependency override (not patch) for proper injection
+    async def override_get_current_user():
+        return mock_user
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    try:
+        response = await async_client.get(
+            "/api/config/webhook",
+            headers={"Authorization": f"Bearer {authenticated_user['token']}"},
+        )
+        assert response.status_code == 500
+        data = response.json()
+        assert "webhook token not configured" in data["detail"].lower()
+    finally:
+        # Clean up override
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.mark.asyncio
 async def test_webhook_config_tradingview_message_template(
     async_client: AsyncClient,
     authenticated_user,
 ):
-    """Test AC#4: TradingView setup contains ready-to-paste message."""
+    """Test AC#4: TradingView setup contains ready-to-paste message with correct placeholders."""
     response = await async_client.get(
         "/api/config/webhook",
         headers={"Authorization": f"Bearer {authenticated_user['token']}"},
@@ -98,6 +141,11 @@ async def test_webhook_config_tradingview_message_template(
     assert "symbol" in template
     assert "side" in template
     assert "size" in template
+
+    # Verify TradingView placeholder syntax (M2 fix: verify actual values)
+    assert template["symbol"] == "{{ticker}}"
+    assert template["side"] == "{{strategy.order.action}}"
+    assert template["size"] == "{{strategy.position_size}}"
 
 
 @pytest.mark.asyncio
@@ -258,6 +306,26 @@ async def test_put_config_cross_validates_size_vs_max(
     assert response.status_code == 400
     data = response.json()
     assert "INVALID_CONFIG" in str(data.get("detail", data))
+
+
+@pytest.mark.asyncio
+async def test_put_config_allows_size_equal_to_max(
+    async_client: AsyncClient,
+    authenticated_user,
+):
+    """Test AC#3: position_size == max_position_size is allowed (boundary case)."""
+    response = await async_client.put(
+        "/api/config",
+        headers={"Authorization": f"Bearer {authenticated_user['token']}"},
+        json={
+            "position_size": "5.0",
+            "max_position_size": "5.0",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["position_size"] == "5.0"
+    assert data["max_position_size"] == "5.0"
 
 
 @pytest.mark.asyncio

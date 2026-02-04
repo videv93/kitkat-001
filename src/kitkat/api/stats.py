@@ -317,15 +317,19 @@ async def get_dashboard(
     recent_errors = 0
 
     # Onboarding status check (Story 5.5: AC#2)
-    # wallet_connected and webhook_configured are always True if authenticated (MVP)
+    # wallet_connected is always True if authenticated
+    # webhook_configured checks actual token presence
     dex_authorized = any(
         dex.status in ("healthy", "degraded")
         for dex in system_health.components.values()
     )
+    webhook_configured = bool(current_user.webhook_token)
     test_signal_sent = await _check_test_signal_sent(session, current_user.id)
     first_live_trade = await _check_first_live_trade(session, current_user.id)
     # All 5 steps must be complete for onboarding_complete
-    onboarding_complete = dex_authorized and test_signal_sent and first_live_trade
+    onboarding_complete = (
+        dex_authorized and webhook_configured and test_signal_sent and first_live_trade
+    )
 
     # Calculate overall status (AC#2, AC#3)
     status = _calculate_dashboard_status(system_health)
@@ -409,9 +413,8 @@ async def get_onboarding_status(
     )
 
     # Step 3: webhook_configured (AC#5)
-    # For MVP, if user exists they have a webhook token
-    # (generated during account creation in Story 2.4)
-    webhook_configured = True  # MVP simplification
+    # Check if user has a webhook token (generated during account creation)
+    webhook_configured = bool(current_user.webhook_token)
 
     # Step 4: test_signal_sent (AC#6)
     test_signal_sent = await _check_test_signal_sent(session, current_user.id)

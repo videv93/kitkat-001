@@ -1,6 +1,6 @@
 # Story 5.2: Volume Display (Today/Week)
 
-Status: review
+Status: done
 
 ## Story
 
@@ -256,5 +256,6 @@ N/A - no issues encountered
 
 ### Change Log
 
+- 2026-02-04: **Code Review PASSED** - No issues found, all ACs verified
 - 2026-02-02: Story 5.2 validated and marked for review - all tasks complete, all tests passing
 

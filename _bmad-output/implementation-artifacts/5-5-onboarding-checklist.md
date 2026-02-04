@@ -1,6 +1,6 @@
 # Story 5.5: Onboarding Checklist
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -41,67 +41,67 @@ So that **I know what steps remain before I can start trading**.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create Pydantic response models (AC: #1)
-  - [ ] 1.1 Add `OnboardingStep` model with: id, name, complete
-  - [ ] 1.2 Add `OnboardingResponse` model with: complete, progress, steps
-  - [ ] 1.3 Add models to `models.py` following existing naming patterns
+- [x] Task 1: Create Pydantic response models (AC: #1)
+  - [x] 1.1 Add `OnboardingStep` model with: id, name, complete
+  - [x] 1.2 Add `OnboardingResponse` model with: complete, progress, steps
+  - [x] 1.3 Add models to `models.py` following existing naming patterns
 
-- [ ] Task 2: Create onboarding endpoint in API (AC: #1)
-  - [ ] 2.1 Add `GET /api/onboarding` endpoint to `api/stats.py` (alongside dashboard endpoint)
-  - [ ] 2.2 Use `Depends(get_current_user)` for authentication
-  - [ ] 2.3 Inject dependencies: StatsService, HealthService, db session
-  - [ ] 2.4 Return response matching AC#1 JSON structure
+- [x] Task 2: Create onboarding endpoint in API (AC: #1)
+  - [x] 2.1 Add `GET /api/onboarding` endpoint to `api/stats.py` (alongside dashboard endpoint)
+  - [x] 2.2 Use `Depends(get_current_user)` for authentication
+  - [x] 2.3 Inject dependencies: StatsService, HealthService, db session
+  - [x] 2.4 Return response matching AC#1 JSON structure
 
-- [ ] Task 3: Implement wallet_connected check (AC: #3)
-  - [ ] 3.1 User has valid session → step complete (authentication itself proves wallet connected)
-  - [ ] 3.2 If authenticated via `get_current_user` → wallet_connected = True
+- [x] Task 3: Implement wallet_connected check (AC: #3)
+  - [x] 3.1 User has valid session → step complete (authentication itself proves wallet connected)
+  - [x] 3.2 If authenticated via `get_current_user` → wallet_connected = True
 
-- [ ] Task 4: Implement dex_authorized check (AC: #4)
-  - [ ] 4.1 Query HealthService for DEX connection status
-  - [ ] 4.2 If any DEX is "healthy" or "degraded" (connected) → step complete
-  - [ ] 4.3 If all DEXs "offline" → step incomplete
+- [x] Task 4: Implement dex_authorized check (AC: #4)
+  - [x] 4.1 Query HealthService for DEX connection status
+  - [x] 4.2 If any DEX is "healthy" or "degraded" (connected) → step complete
+  - [x] 4.3 If all DEXs "offline" → step incomplete
 
-- [ ] Task 5: Implement webhook_configured check (AC: #5)
-  - [ ] 5.1 Check if user has `webhook_token` in `users.config_data`
-  - [ ] 5.2 Token presence → step complete
-  - [ ] 5.3 Fallback: if user exists in system, assume webhook token exists (MVP simplification)
+- [x] Task 5: Implement webhook_configured check (AC: #5)
+  - [x] 5.1 Check if user has `webhook_token` in `users.config_data`
+  - [x] 5.2 Token presence → step complete
+  - [x] 5.3 Fallback: if user exists in system, assume webhook token exists (MVP simplification)
 
-- [ ] Task 6: Implement test_signal_sent check (AC: #6)
-  - [ ] 6.1 Query executions table for user with `is_test_mode: true` in result_data
-  - [ ] 6.2 At least one test mode execution → step complete
-  - [ ] 6.3 Reuse StatsService pattern for database queries
+- [x] Task 6: Implement test_signal_sent check (AC: #6)
+  - [x] 6.1 Query executions table for user with `is_test_mode: true` in result_data
+  - [x] 6.2 At least one test mode execution → step complete
+  - [x] 6.3 Reuse StatsService pattern for database queries
 
-- [ ] Task 7: Implement first_live_trade check (AC: #7)
-  - [ ] 7.1 Query executions table for user with `is_test_mode: false` or not present
-  - [ ] 7.2 At least one non-test execution with status "filled" or "partial" → step complete
-  - [ ] 7.3 Reuse existing execution query patterns from StatsService
+- [x] Task 7: Implement first_live_trade check (AC: #7)
+  - [x] 7.1 Query executions table for user with `is_test_mode: false` or not present
+  - [x] 7.2 At least one non-test execution with status "filled" or "partial" → step complete
+  - [x] 7.3 Reuse existing execution query patterns from StatsService
 
-- [ ] Task 8: Implement onboarding persistence (AC: #2)
-  - [ ] 8.1 Define `onboarding_steps` structure in `users.config_data` JSON
-  - [ ] 8.2 Update step completion status when detected (optional - can be computed on-demand)
-  - [ ] 8.3 NOTE: For MVP, compute status dynamically rather than persisting (simpler, always accurate)
+- [x] Task 8: Implement onboarding persistence (AC: #2)
+  - [x] 8.1 Define `onboarding_steps` structure in `users.config_data` JSON
+  - [x] 8.2 Update step completion status when detected (optional - can be computed on-demand)
+  - [x] 8.3 NOTE: For MVP, compute status dynamically rather than persisting (simpler, always accurate)
 
-- [ ] Task 9: Calculate progress and complete status (AC: #8)
-  - [ ] 9.1 Count completed steps, format as "X/5"
-  - [ ] 9.2 Set `complete: true` only when all 5 steps are complete
-  - [ ] 9.3 Ensure progress math is correct: completed_count / total_steps
+- [x] Task 9: Calculate progress and complete status (AC: #8)
+  - [x] 9.1 Count completed steps, format as "X/5"
+  - [x] 9.2 Set `complete: true` only when all 5 steps are complete
+  - [x] 9.3 Ensure progress math is correct: completed_count / total_steps
 
-- [ ] Task 10: Update Dashboard endpoint to use real onboarding status
-  - [ ] 10.1 Replace hardcoded `onboarding_complete = True` in `/api/dashboard`
-  - [ ] 10.2 Call onboarding logic to determine actual completion status
-  - [ ] 10.3 Ensure backward compatibility (dashboard still works)
+- [x] Task 10: Update Dashboard endpoint to use real onboarding status
+  - [x] 10.1 Replace hardcoded `onboarding_complete = True` in `/api/dashboard`
+  - [x] 10.2 Call onboarding logic to determine actual completion status
+  - [x] 10.3 Ensure backward compatibility (dashboard still works)
 
-- [ ] Task 11: Write comprehensive tests
-  - [ ] 11.1 Test endpoint returns correct JSON structure (AC#1)
-  - [ ] 11.2 Test wallet_connected logic (AC#3)
-  - [ ] 11.3 Test dex_authorized with healthy DEX (AC#4)
-  - [ ] 11.4 Test dex_authorized with offline DEXs (AC#4)
-  - [ ] 11.5 Test webhook_configured (AC#5)
-  - [ ] 11.6 Test test_signal_sent with mock test execution (AC#6)
-  - [ ] 11.7 Test first_live_trade with real execution (AC#7)
-  - [ ] 11.8 Test progress calculation "3/5", "5/5" etc. (AC#8)
-  - [ ] 11.9 Test complete=true when all steps done (AC#8)
-  - [ ] 11.10 Test authentication required (401 without valid session)
+- [x] Task 11: Write comprehensive tests
+  - [x] 11.1 Test endpoint returns correct JSON structure (AC#1)
+  - [x] 11.2 Test wallet_connected logic (AC#3)
+  - [x] 11.3 Test dex_authorized with healthy DEX (AC#4)
+  - [x] 11.4 Test dex_authorized with offline DEXs (AC#4)
+  - [x] 11.5 Test webhook_configured (AC#5)
+  - [x] 11.6 Test test_signal_sent with mock test execution (AC#6)
+  - [x] 11.7 Test first_live_trade with real execution (AC#7)
+  - [x] 11.8 Test progress calculation "3/5", "5/5" etc. (AC#8)
+  - [x] 11.9 Test complete=true when all steps done (AC#8)
+  - [x] 11.10 Test authentication required (401 without valid session)
 
 ## Dev Notes
 
@@ -602,11 +602,35 @@ Recent commits show story naming convention:
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.5 (claude-opus-4-5-20251101)
 
 ### Debug Log References
 
+None - implementation was already complete when story resumed.
+
 ### Completion Notes List
 
+- Implementation was found to be complete upon story resumption
+- All 11 tasks verified implemented in existing codebase
+- Pydantic models `OnboardingStep` and `OnboardingResponse` in models.py (lines 857-885)
+- Onboarding endpoint `GET /api/onboarding` in api/stats.py (lines 377-446)
+- Helper functions `_check_test_signal_sent` and `_check_first_live_trade` (lines 80-157)
+- Dashboard endpoint updated to use real onboarding status (lines 319-328)
+- 17 comprehensive tests covering all ACs in tests/api/test_stats.py (lines 1082-1697)
+- All 44 tests in test_stats.py pass
+- 467 tests pass in api/services test suite (3 pre-existing failures unrelated to this story)
+
 ### File List
+
+**Files Implemented:**
+- `src/kitkat/models.py` - Added OnboardingStep, OnboardingResponse models (lines 857-885)
+- `src/kitkat/api/stats.py` - Added /api/onboarding endpoint, helper functions, dashboard integration (lines 62-446)
+- `tests/api/test_stats.py` - Added comprehensive onboarding tests (lines 1082-1697)
+
+### Change Log
+
+- 2026-02-04: **Code Review PASSED** - Issue fixed:
+  - M1: Changed webhook_configured from hardcoded True to `bool(current_user.webhook_token)`
+  - Updated dashboard endpoint for consistency
+- 2026-02-02: Story verified complete, all tasks marked done, status updated to "review"
 
