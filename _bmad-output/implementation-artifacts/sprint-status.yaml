@@ -96,7 +96,7 @@ development_status:
   # Epic 6: Frontend - Wallet Connection & Authentication (Connect Screen)
   epic-6: in-progress
   6-1-frontend-project-setup-app-shell: done
-  6-2-connect-screen-wallet-connection-ui: backlog
+  6-2-connect-screen-wallet-connection-ui: done
   6-3-wallet-signature-auth-flow-session-management: backlog
   epic-6-retrospective: optional
 
