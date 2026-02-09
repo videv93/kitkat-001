@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -226,6 +227,17 @@ app = FastAPI(
     description="TradingView to DEX signal execution engine",
     version="0.1.0",
     lifespan=lifespan,
+)
+
+# Story 6.1: CORS middleware for frontend development
+# In production, frontend is served from same origin (no CORS needed)
+cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
 )
 
 # Mount routers

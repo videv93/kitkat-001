@@ -92,3 +92,26 @@ development_status:
   5-7-webhook-url-payload-display: done
   5-8-telegram-configuration: done
   epic-5-retrospective: optional
+
+  # Epic 6: Frontend - Wallet Connection & Authentication (Connect Screen)
+  epic-6: in-progress
+  6-1-frontend-project-setup-app-shell: done
+  6-2-connect-screen-wallet-connection-ui: backlog
+  6-3-wallet-signature-auth-flow-session-management: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Frontend - Dashboard & System Status (Daily Driver)
+  epic-7: backlog
+  7-1-dashboard-layout-system-health-status: backlog
+  7-2-volume-stats-execution-metrics: backlog
+  7-3-onboarding-progress-recent-errors: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Frontend - Settings, Configuration & Account Management
+  epic-8: backlog
+  8-1-settings-layout-position-size-configuration: backlog
+  8-2-webhook-setup-display: backlog
+  8-3-telegram-alerts-test-mode-configuration: backlog
+  8-4-error-log-account-management: backlog
+  8-5-production-build-static-file-serving: backlog
+  epic-8-retrospective: optional
