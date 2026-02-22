@@ -108,10 +108,10 @@ development_status:
   epic-7-retrospective: optional
 
   # Epic 8: Frontend - Settings, Configuration & Account Management
-  epic-8: in-progress
+  epic-8: done
   8-1-settings-layout-position-size-configuration: done
   8-2-webhook-setup-display: done
   8-3-telegram-alerts-test-mode-configuration: done
-  8-4-error-log-account-management: review
+  8-4-error-log-account-management: done
   8-5-production-build-static-file-serving: done
   epic-8-retrospective: optional
