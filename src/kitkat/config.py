@@ -46,6 +46,9 @@ class Settings(BaseSettings):
         description="Mock adapter failure rate (0-100%) for testing error paths. Default: 0 (always succeed)",
     )
 
+    # Static file serving (Story 8.5)
+    serve_frontend: bool = False
+
     # Application host for URL generation (Story 2.4)
     app_host: str = "localhost:8000"
 

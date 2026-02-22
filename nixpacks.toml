@@ -1,8 +1,19 @@
 # Railway/Nixpacks configuration for Kitkat
-# Nixpacks auto-detects Python from runtime.txt and installs requirements.txt
+# Multi-language build: Python backend + Node.js frontend
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "python311"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt", "cd frontend && npm install"]
+
+[phases.build]
+cmds = ["cd frontend && npm run build"]
 
 [variables]
 PYTHONPATH = "/app/src"
+SERVE_FRONTEND = "true"
+VITE_API_URL = ""
 
 [start]
 cmd = "uvicorn kitkat.main:app --host 0.0.0.0 --port ${PORT:-8000}"

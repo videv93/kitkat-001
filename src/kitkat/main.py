@@ -4,13 +4,15 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
+from starlette.staticfiles import StaticFiles
 
 from kitkat.api.auth import router as auth_router
 from kitkat.api.config import router as config_router
@@ -230,15 +232,17 @@ app = FastAPI(
 )
 
 # Story 6.1: CORS middleware for frontend development
-# In production, frontend is served from same origin (no CORS needed)
-cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
-)
+# Story 8.5: Only add CORS when not serving frontend (dev mode with separate Vite server)
+settings = get_settings()
+if not settings.serve_frontend:
+    cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["*"],
+    )
 
 # Mount routers
 app.include_router(health_router)  # Story 4.1: Health check endpoint (unauthenticated)
@@ -254,6 +258,27 @@ app.include_router(executions_router)
 app.include_router(stats_router)
 # Story 4.5: Error log viewer endpoint
 app.include_router(errors_router)
+
+# Story 8.5: Static file serving for production (frontend served from same origin)
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+
+if settings.serve_frontend and FRONTEND_DIR.exists():
+    # Serve static assets (JS, CSS, images)
+    assets_dir = FRONTEND_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="static")
+
+    # SPA fallback - serve index.html for all non-API routes
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str) -> FileResponse:
+        """Serve index.html for client-side routing (SPA fallback)."""
+        index_file = FRONTEND_DIR / "index.html"
+        if not index_file.exists():
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Frontend not available"},
+            )
+        return FileResponse(index_file)
 
 
 @app.exception_handler(RequestValidationError)

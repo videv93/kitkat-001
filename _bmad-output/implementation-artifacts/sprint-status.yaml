@@ -97,21 +97,21 @@ development_status:
   epic-6: in-progress
   6-1-frontend-project-setup-app-shell: done
   6-2-connect-screen-wallet-connection-ui: done
-  6-3-wallet-signature-auth-flow-session-management: backlog
+  6-3-wallet-signature-auth-flow-session-management: in-progress
   epic-6-retrospective: optional
 
   # Epic 7: Frontend - Dashboard & System Status (Daily Driver)
-  epic-7: backlog
-  7-1-dashboard-layout-system-health-status: backlog
-  7-2-volume-stats-execution-metrics: backlog
-  7-3-onboarding-progress-recent-errors: backlog
+  epic-7: in-progress
+  7-1-dashboard-layout-system-health-status: done
+  7-2-volume-stats-execution-metrics: done
+  7-3-onboarding-progress-recent-errors: done
   epic-7-retrospective: optional
 
   # Epic 8: Frontend - Settings, Configuration & Account Management
-  epic-8: backlog
-  8-1-settings-layout-position-size-configuration: backlog
-  8-2-webhook-setup-display: backlog
-  8-3-telegram-alerts-test-mode-configuration: backlog
-  8-4-error-log-account-management: backlog
-  8-5-production-build-static-file-serving: backlog
+  epic-8: in-progress
+  8-1-settings-layout-position-size-configuration: done
+  8-2-webhook-setup-display: in-progress
+  8-3-telegram-alerts-test-mode-configuration: done
+  8-4-error-log-account-management: review
+  8-5-production-build-static-file-serving: done
   epic-8-retrospective: optional
