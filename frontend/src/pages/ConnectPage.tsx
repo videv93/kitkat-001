@@ -1,6 +1,9 @@
 import { ConnectKitButton } from 'connectkit'
+import { useWalletAuth } from '../hooks/useWalletAuth'
 
 export default function ConnectPage() {
+  const { isAuthenticating, step, error, retry } = useWalletAuth()
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-950 px-4 text-white">
       <div className="mx-auto w-full max-w-md text-center">
@@ -14,25 +17,47 @@ export default function ConnectPage() {
           decentralized exchanges.
         </p>
 
-        <ConnectKitButton.Custom>
-          {({ isConnected, isConnecting, show, truncatedAddress }) => (
+        {isAuthenticating ? (
+          <div className="mb-4">
+            <div className="w-full rounded-lg border border-gray-700 bg-gray-800 px-6 py-3 text-lg font-semibold text-white">
+              {step === 'challenging' && 'Requesting challenge...'}
+              {step === 'signing' && 'Please sign the message in MetaMask...'}
+              {step === 'verifying' && 'Verifying signature...'}
+            </div>
+          </div>
+        ) : (
+          <ConnectKitButton.Custom>
+            {({ isConnected, isConnecting, show, truncatedAddress }) => (
+              <button
+                onClick={show}
+                className={
+                  isConnected
+                    ? 'w-full rounded-lg border border-gray-700 bg-gray-800 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-gray-700'
+                    : 'w-full rounded-lg bg-blue-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-blue-500 disabled:opacity-50'
+                }
+                disabled={isConnecting}
+              >
+                {isConnecting
+                  ? 'Connecting...'
+                  : isConnected
+                    ? truncatedAddress
+                    : 'Connect Wallet'}
+              </button>
+            )}
+          </ConnectKitButton.Custom>
+        )}
+
+        {error && (
+          <div className="mt-4">
+            <p className="mb-3 text-sm text-red-400">{error}</p>
             <button
-              onClick={show}
-              className={
-                isConnected
-                  ? 'w-full rounded-lg border border-gray-700 bg-gray-800 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-gray-700'
-                  : 'w-full rounded-lg bg-blue-600 px-6 py-3 text-lg font-semibold text-white transition-colors hover:bg-blue-500 disabled:opacity-50'
-              }
-              disabled={isConnecting}
+              onClick={retry}
+              className="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700"
             >
-              {isConnecting
-                ? 'Connecting...'
-                : isConnected
-                  ? truncatedAddress
-                  : 'Connect Wallet'}
+              Try Again
             </button>
-          )}
-        </ConnectKitButton.Custom>
+          </div>
+        )}
 
         <div className="mt-8 flex items-center justify-center gap-2 text-sm text-gray-500">
           <svg

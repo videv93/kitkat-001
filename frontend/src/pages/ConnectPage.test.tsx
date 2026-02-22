@@ -25,14 +25,34 @@ vi.mock('connectkit', () => ({
   },
 }))
 
+// Mock useWalletAuth
+const mockRetry = vi.fn()
+let mockWalletAuth = {
+  isAuthenticating: false,
+  step: 'idle' as string,
+  error: null as string | null,
+  retry: mockRetry,
+}
+
+vi.mock('../hooks/useWalletAuth', () => ({
+  useWalletAuth: () => mockWalletAuth,
+}))
+
 describe('ConnectPage', () => {
   beforeEach(() => {
     currentRenderProps = { ...defaultRenderProps }
+    mockWalletAuth = {
+      isAuthenticating: false,
+      step: 'idle',
+      error: null,
+      retry: mockRetry,
+    }
     mockShow.mockClear()
     mockHide.mockClear()
+    mockRetry.mockClear()
   })
 
-  // Task 4.1: renders branding, description, and trust copy
+  // Existing Story 6.2 tests
   it('renders branding and app name', () => {
     render(<ConnectPage />)
     expect(screen.getByText('kitkat-001')).toBeInTheDocument()
@@ -51,13 +71,11 @@ describe('ConnectPage', () => {
     expect(trustCopy).toBeInTheDocument()
   })
 
-  // Task 4.2: renders Connect Wallet button when not connected
   it('renders Connect Wallet button when not connected', () => {
     render(<ConnectPage />)
     expect(screen.getByRole('button', { name: /Connect Wallet/i })).toBeInTheDocument()
   })
 
-  // Task 4.3: shows wallet address when connected
   it('shows truncated wallet address when connected', () => {
     currentRenderProps = {
       ...defaultRenderProps,
@@ -69,7 +87,6 @@ describe('ConnectPage', () => {
     expect(screen.getByText('0x1234...5678')).toBeInTheDocument()
   })
 
-  // Task 4.4: ConnectKit button show() is called on click
   it('calls show() when Connect Wallet button is clicked', () => {
     render(<ConnectPage />)
     const button = screen.getByRole('button', { name: /Connect Wallet/i })
@@ -77,7 +94,6 @@ describe('ConnectPage', () => {
     expect(mockShow).toHaveBeenCalledOnce()
   })
 
-  // Connecting state
   it('shows loading indicator when connecting', () => {
     currentRenderProps = {
       ...defaultRenderProps,
@@ -86,5 +102,53 @@ describe('ConnectPage', () => {
     render(<ConnectPage />)
     expect(screen.getByRole('button', { name: /Connecting/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Connecting/i })).toBeDisabled()
+  })
+
+  // Story 6.3: Auth flow state tests
+  it('shows "Requesting challenge..." during challenge fetch', () => {
+    mockWalletAuth = {
+      isAuthenticating: true,
+      step: 'challenging',
+      error: null,
+      retry: mockRetry,
+    }
+    render(<ConnectPage />)
+    expect(screen.getByText('Requesting challenge...')).toBeInTheDocument()
+  })
+
+  it('shows "Please sign the message in MetaMask..." during signing', () => {
+    mockWalletAuth = {
+      isAuthenticating: true,
+      step: 'signing',
+      error: null,
+      retry: mockRetry,
+    }
+    render(<ConnectPage />)
+    expect(screen.getByText('Please sign the message in MetaMask...')).toBeInTheDocument()
+  })
+
+  it('shows error message when signature rejected', () => {
+    mockWalletAuth = {
+      isAuthenticating: false,
+      step: 'idle',
+      error: 'Signature rejected - you can try again anytime',
+      retry: mockRetry,
+    }
+    render(<ConnectPage />)
+    expect(screen.getByText('Signature rejected - you can try again anytime')).toBeInTheDocument()
+  })
+
+  it('shows "Try Again" button on error and calls retry', () => {
+    mockWalletAuth = {
+      isAuthenticating: false,
+      step: 'idle',
+      error: 'Some error occurred',
+      retry: mockRetry,
+    }
+    render(<ConnectPage />)
+    const tryAgainButton = screen.getByRole('button', { name: /Try Again/i })
+    expect(tryAgainButton).toBeInTheDocument()
+    fireEvent.click(tryAgainButton)
+    expect(mockRetry).toHaveBeenCalledOnce()
   })
 })

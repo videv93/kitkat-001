@@ -26,6 +26,7 @@ function TestProviders({ children }: { children: ReactNode }) {
 describe('AuthGate', () => {
   beforeEach(() => {
     localStorage.clear()
+    window.location.hash = ''
   })
 
   it('renders ConnectPage when not authenticated', () => {
@@ -37,6 +38,21 @@ describe('AuthGate', () => {
   it('renders DashboardPage when authenticated', () => {
     localStorage.setItem('kitkat_token', 'valid-token')
     render(<AuthGate />, { wrapper: TestProviders })
-    expect(screen.getByText('Dashboard — coming in Story 7.1')).toBeInTheDocument()
+    expect(screen.getByText('Loading dashboard...')).toBeInTheDocument()
+  })
+
+  it('renders SettingsPage when authenticated and hash is #settings', () => {
+    localStorage.setItem('kitkat_token', 'valid-token')
+    window.location.hash = '#settings'
+    render(<AuthGate />, { wrapper: TestProviders })
+    expect(screen.getByText('Settings')).toBeInTheDocument()
+    expect(screen.getByText('Back to Dashboard')).toBeInTheDocument()
+  })
+
+  it('renders DashboardPage by default when authenticated with no hash', () => {
+    localStorage.setItem('kitkat_token', 'valid-token')
+    window.location.hash = ''
+    render(<AuthGate />, { wrapper: TestProviders })
+    expect(screen.getByText('Loading dashboard...')).toBeInTheDocument()
   })
 })

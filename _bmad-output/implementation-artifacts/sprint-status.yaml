@@ -94,14 +94,14 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Frontend - Wallet Connection & Authentication (Connect Screen)
-  epic-6: in-progress
+  epic-6: done
   6-1-frontend-project-setup-app-shell: done
   6-2-connect-screen-wallet-connection-ui: done
-  6-3-wallet-signature-auth-flow-session-management: in-progress
+  6-3-wallet-signature-auth-flow-session-management: done
   epic-6-retrospective: optional
 
   # Epic 7: Frontend - Dashboard & System Status (Daily Driver)
-  epic-7: in-progress
+  epic-7: done
   7-1-dashboard-layout-system-health-status: done
   7-2-volume-stats-execution-metrics: done
   7-3-onboarding-progress-recent-errors: done
